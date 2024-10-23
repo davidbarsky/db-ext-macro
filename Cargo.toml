@@ -1,0 +1,15 @@
+[package]
+name = "db-ext-macro"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+heck = "0.5.0"
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "2.0.64", features = ["full", "visit-mut"] }
+synstructure = "0.13.1"
+salsa = { git = "https://github.com/salsa-rs/salsa.git" }

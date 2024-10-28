@@ -1,4 +1,5 @@
 use db_ext_macro::db_ext;
+use salsa::Durability;
 
 #[db_ext]
 pub trait HelloWorldDatabase: salsa::Database {
@@ -33,7 +34,8 @@ impl salsa::Database for HelloWorldDb {
 #[test]
 fn parses() {
     let mut db = HelloWorldDb::default();
-    db.set_input_string((), String::from("Hello, world!"));
+    // db.set_input_string((), String::from("Hello, world!"));
+    db.set_input_string_with_durability((), String::from("Hello, world!"), Durability::HIGH);
 
     let len = db.length_query(());
     assert_eq!(len, 13);

@@ -138,6 +138,7 @@ impl ToTokens for TrackedInvokeQuery {
 
         let method = quote! {
             #sig {
+                #[salsa::tracked]
                 fn __shim__(
                     db: &dyn #trait_name,
                     _input: #input_struct_name,

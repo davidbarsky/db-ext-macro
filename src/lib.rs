@@ -1,20 +1,22 @@
 use proc_macro::TokenStream;
-use quote::{format_ident, quote, ToTokens};
-use syn::visit_mut::VisitMut;
-use syn::{
-    parse_macro_input, parse_quote, Attribute, FnArg, Ident, PatType, Path, Receiver, ReturnType,
-    Signature,
+use queries::{
+    InputQuery, InputSetter, InputSetterWithDurability, Queries, SetterKind, TrackedInvokeQuery,
+    TrackedQuery, Transparent,
 };
+use quote::{format_ident, quote, ToTokens};
+use syn::spanned::Spanned;
+use syn::visit_mut::VisitMut;
+use syn::{parse_quote, Attribute, FnArg, Ident};
 use syn::{ItemTrait, TraitItem};
+
+mod queries;
 
 #[proc_macro_attribute]
 pub fn db_ext(args: TokenStream, input: TokenStream) -> TokenStream {
-    db_ext_impl(args, input)
-}
-
-#[proc_macro_attribute]
-pub fn input(_args: TokenStream, input: TokenStream) -> TokenStream {
-    input
+    match db_ext_impl(args, input.clone()) {
+        Ok(tokens) => tokens.into(),
+        Err(e) => token_stream_with_error(input, e),
+    }
 }
 
 #[derive(Debug)]
@@ -84,220 +86,15 @@ fn filter_attrs(attrs: Vec<Attribute>) -> (Vec<Attribute>, Vec<SalsaAttr>) {
     (other, ra_salsa)
 }
 
-struct TrackedQuery {
-    trait_name: Ident,
-    input_struct_name: Ident,
-    signature: Signature,
-    typed: PatType,
-}
-
-impl ToTokens for TrackedQuery {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let sig = &self.signature;
-        let trait_name = &self.trait_name;
-        let input_struct_name = &self.input_struct_name;
-        let ret = &sig.output;
-        let type_ascription = &self.typed;
-        let typed = &self.typed.pat;
-        let invoke = &sig.ident;
-
-        let method = quote! {
-            #sig {
-                fn __shim__(
-                    db: &dyn #trait_name,
-                    _input: #input_struct_name,
-                    #type_ascription,
-                ) #ret {
-                    #invoke(db, #typed)
-                }
-                __shim__(self, create_data(self), #typed)
-            }
-        };
-
-        method.to_tokens(tokens);
-    }
-}
-
-struct TrackedInvokeQuery {
-    trait_name: Ident,
-    input_struct_name: Ident,
-    signature: Signature,
-    typed: PatType,
-    invoke: Path,
-}
-
-impl ToTokens for TrackedInvokeQuery {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let sig = &self.signature;
-        let trait_name = &self.trait_name;
-        let input_struct_name = &self.input_struct_name;
-        let ret = &sig.output;
-        let type_ascription = &self.typed;
-        let typed = &self.typed.pat;
-        let invoke = self.invoke.clone();
-
-        let method = quote! {
-            #sig {
-                #[salsa::tracked]
-                fn __shim__(
-                    db: &dyn #trait_name,
-                    _input: #input_struct_name,
-                    #type_ascription,
-                ) #ret {
-                    #invoke(db, #typed)
-                }
-                __shim__(self, create_data(self), #typed)
-            }
-        };
-        method.to_tokens(tokens);
-    }
-}
-
-struct InputQuery {
-    signature: Signature,
-}
-
-impl ToTokens for InputQuery {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let sig = &self.signature;
-        let fn_ident = &sig.ident;
-
-        let method = quote! {
-            #sig {
-                let data = create_data(self);
-                data.#fn_ident(self).unwrap()
-            }
-        };
-        method.to_tokens(tokens);
-    }
-}
-
-struct InputSetter {
-    signature: Signature,
-}
-
-impl ToTokens for InputSetter {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let sig = &self.signature;
-        let fn_ident = &sig.ident;
-        let syn::ReturnType::Type(_, ty) = &sig.output else {
-            return;
-        };
-
-        let mut sig = self.signature.clone();
-        sig.ident = format_ident!("set_{}", fn_ident);
-        let sig_ident = &sig.ident;
-
-        let value_argument: PatType = parse_quote!(__value: #ty);
-        let pat = &value_argument.pat.clone();
-        sig.inputs.push(FnArg::Typed(value_argument));
-
-        // make `&self` `&mut self` instead.
-        let mut_recevier: Receiver = parse_quote!(&mut self);
-        sig.inputs
-            .first_mut()
-            .map(|og| *og = FnArg::Receiver(mut_recevier));
-
-        // remove the return value.
-        sig.output = ReturnType::Default;
-
-        let method = quote! {
-            #sig {
-                let data = create_data(self);
-                data.#sig_ident(self).to(Some(#pat));
-            }
-        };
-        method.to_tokens(tokens);
-    }
-}
-
-struct InputSetterWithDurability {
-    signature: Signature,
-}
-
-impl ToTokens for InputSetterWithDurability {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let sig = &self.signature;
-        let fn_ident = &sig.ident;
-        let syn::ReturnType::Type(_, ty) = &sig.output else {
-            return;
-        };
-
-        let mut sig = self.signature.clone();
-        sig.ident = format_ident!("set_{}_with_durability", fn_ident);
-        let sig_ident = format_ident!("set_{}", fn_ident);
-
-        let value_argument: PatType = parse_quote!(__value: #ty);
-        let value_pat = &value_argument.pat.clone();
-        sig.inputs.push(FnArg::Typed(value_argument));
-
-        let durability_argument: PatType = parse_quote!(durability: salsa::Durability);
-        let durability_pat = &durability_argument.pat.clone();
-        sig.inputs.push(FnArg::Typed(durability_argument));
-
-        // make `&self` `&mut self` instead.
-        let mut_recevier: Receiver = parse_quote!(&mut self);
-        sig.inputs
-            .first_mut()
-            .map(|og| *og = FnArg::Receiver(mut_recevier));
-
-        // remove the return value.
-        sig.output = ReturnType::Default;
-
-        let method = quote! {
-            #sig {
-                let data = create_data(self);
-                data.#sig_ident(self)
-                    .with_durability(#durability_pat)
-                    .to(Some(#value_pat));
-            }
-        };
-        eprintln!("{}", method);
-        method.to_tokens(tokens);
-    }
-}
-
-enum SetterKind {
-    Plain(InputSetter),
-    WithDurability(InputSetterWithDurability),
-}
-
-impl ToTokens for SetterKind {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        match self {
-            SetterKind::Plain(input_setter) => input_setter.to_tokens(tokens),
-            SetterKind::WithDurability(input_setter_with_durability) => {
-                input_setter_with_durability.to_tokens(tokens)
-            }
-        }
-    }
-}
-
-// struct TransparentMethod {}
-
-enum Queries {
-    TrackedQuery(TrackedQuery),
-    TrackedInvokeQuery(TrackedInvokeQuery),
-    InputQuery(InputQuery),
-}
-
-impl ToTokens for Queries {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        match self {
-            Queries::TrackedQuery(tracked_query) => tracked_query.to_tokens(tokens),
-            Queries::TrackedInvokeQuery(tracked_invoke_query) => {
-                tracked_invoke_query.to_tokens(tokens)
-            }
-            Queries::InputQuery(input_query) => input_query.to_tokens(tokens),
-        }
-    }
-}
-
 pub(crate) fn db_ext_impl(
     _args: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    let mut item_trait: ItemTrait = parse_macro_input!(input as ItemTrait);
+) -> Result<proc_macro::TokenStream, syn::Error> {
+    let mut item_trait = match syn::parse::<ItemTrait>(input) {
+        Ok(path) => path,
+        Err(e) => return Err(e),
+    };
+
     let db_attr: Attribute = parse_quote! {
         #[salsa::db]
     };
@@ -314,7 +111,7 @@ pub(crate) fn db_ext_impl(
         match item {
             syn::TraitItem::Fn(method) => {
                 let name = &method.sig.ident;
-                let signature = &method.sig;
+                let signature = &method.sig.clone();
 
                 let return_type = signature.output.clone();
                 match return_type {
@@ -358,33 +155,54 @@ pub(crate) fn db_ext_impl(
                     for SalsaAttr { name, tts, .. } in salsa_attrs {
                         match name.as_str() {
                             "invoke" => {
-                                let invoke = parse_macro_input!(tts as Parenthesized<syn::Path>).0;
+                                let invoke = match syn::parse::<Parenthesized<syn::Path>>(tts) {
+                                    Ok(path) => path,
+                                    Err(e) => return Err(e),
+                                };
 
                                 let method = TrackedInvokeQuery {
                                     trait_name: trait_name_ident.clone(),
                                     input_struct_name: input_struct_name.clone(),
-                                    signature: method.sig.clone(),
+                                    signature: signature.clone(),
                                     typed: typed.clone(),
-                                    invoke,
+                                    invoke: invoke.0,
                                 };
 
                                 trait_methods.push(Queries::TrackedInvokeQuery(method));
                             }
                             "input" => {
+                                let syn::ReturnType::Type(_, return_type) = &signature.output
+                                else {
+                                    return Err(syn::Error::new(
+                                        signature.span(),
+                                        "expected `name`",
+                                    ));
+                                };
+
                                 let query = InputQuery {
                                     signature: method.sig.clone(),
                                 };
-                                trait_methods.push(Queries::InputQuery(query));
+                                let value = Queries::InputQuery(query);
+                                trait_methods.push(value);
 
                                 let setter = InputSetter {
                                     signature: method.sig.clone(),
+                                    return_type: *return_type.clone(),
                                 };
                                 setter_trait_methods.push(SetterKind::Plain(setter));
 
                                 let setter = InputSetterWithDurability {
                                     signature: method.sig.clone(),
+                                    return_type: *return_type.clone(),
                                 };
                                 setter_trait_methods.push(SetterKind::WithDurability(setter));
+                            }
+                            "transparent" => {
+                                let method = Transparent {
+                                    signature: method.sig.clone(),
+                                    typed: typed.clone(),
+                                };
+                                trait_methods.push(Queries::Transparent(method));
                             }
                             _ => continue,
                         }
@@ -470,7 +288,7 @@ pub(crate) fn db_ext_impl(
     }
     .into();
 
-    out
+    Ok(out)
 }
 
 /// Parenthesis helper
@@ -500,4 +318,9 @@ impl VisitMut for RemoveAttrsFromTraitMethods {
             }
         }
     }
+}
+
+pub(crate) fn token_stream_with_error(mut tokens: TokenStream, error: syn::Error) -> TokenStream {
+    tokens.extend(TokenStream::from(error.into_compile_error()));
+    tokens
 }

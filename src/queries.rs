@@ -6,6 +6,7 @@ pub(crate) struct TrackedQuery {
     pub(crate) input_struct_name: Ident,
     pub(crate) signature: Signature,
     pub(crate) typed: PatType,
+    pub(crate) invoke: Option<Path>,
 }
 
 impl ToTokens for TrackedQuery {
@@ -16,43 +17,11 @@ impl ToTokens for TrackedQuery {
         let ret = &sig.output;
         let type_ascription = &self.typed;
         let typed = &self.typed.pat;
-        let invoke = &sig.ident;
 
-        let method = quote! {
-            #sig {
-                #[salsa::tracked]
-                fn __shim__(
-                    db: &dyn #trait_name,
-                    _input: #input_struct_name,
-                    #type_ascription,
-                ) #ret {
-                    #invoke(db, #typed)
-                }
-                __shim__(self, create_data(self), #typed)
-            }
+        let invoke = match &self.invoke {
+            Some(path) => path.to_token_stream(),
+            None => sig.ident.to_token_stream(),
         };
-
-        method.to_tokens(tokens);
-    }
-}
-
-pub(crate) struct TrackedInvokeQuery {
-    pub(crate) trait_name: Ident,
-    pub(crate) input_struct_name: Ident,
-    pub(crate) signature: Signature,
-    pub(crate) typed: PatType,
-    pub(crate) invoke: Path,
-}
-
-impl ToTokens for TrackedInvokeQuery {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let sig = &self.signature;
-        let trait_name = &self.trait_name;
-        let input_struct_name = &self.input_struct_name;
-        let ret = &sig.output;
-        let type_ascription = &self.typed;
-        let typed = &self.typed.pat;
-        let invoke = self.invoke.clone();
 
         let method = quote! {
             #sig {
@@ -191,13 +160,18 @@ impl ToTokens for SetterKind {
 pub(crate) struct Transparent {
     pub(crate) signature: Signature,
     pub(crate) typed: PatType,
+    pub(crate) invoke: Option<Path>,
 }
 
 impl ToTokens for Transparent {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let sig = &self.signature;
         let typed = &self.typed.pat;
-        let invoke = &sig.ident;
+
+        let invoke = match &self.invoke {
+            Some(path) => path.to_token_stream(),
+            None => sig.ident.to_token_stream(),
+        };
 
         let method = quote! {
             #sig {
@@ -211,7 +185,6 @@ impl ToTokens for Transparent {
 
 pub(crate) enum Queries {
     TrackedQuery(TrackedQuery),
-    TrackedInvokeQuery(TrackedInvokeQuery),
     InputQuery(InputQuery),
     Transparent(Transparent),
 }
@@ -220,9 +193,6 @@ impl ToTokens for Queries {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         match self {
             Queries::TrackedQuery(tracked_query) => tracked_query.to_tokens(tokens),
-            Queries::TrackedInvokeQuery(tracked_invoke_query) => {
-                tracked_invoke_query.to_tokens(tokens)
-            }
             Queries::InputQuery(input_query) => input_query.to_tokens(tokens),
             Queries::Transparent(transparent) => transparent.to_tokens(tokens),
         }

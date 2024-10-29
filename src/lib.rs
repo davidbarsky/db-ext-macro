@@ -1,12 +1,13 @@
 use proc_macro::TokenStream;
+use proc_macro2::Span;
 use queries::{
-    InputQuery, InputSetter, InputSetterWithDurability, Queries, SetterKind, TrackedInvokeQuery,
-    TrackedQuery, Transparent,
+    InputQuery, InputSetter, InputSetterWithDurability, Queries, SetterKind, TrackedQuery,
+    Transparent,
 };
 use quote::{format_ident, quote, ToTokens};
 use syn::spanned::Spanned;
 use syn::visit_mut::VisitMut;
-use syn::{parse_quote, Attribute, FnArg, Ident};
+use syn::{parse_quote, Attribute, FnArg, Ident, Path};
 use syn::{ItemTrait, TraitItem};
 
 mod queries;
@@ -28,6 +29,7 @@ struct InputStructField {
 struct SalsaAttr {
     name: String,
     tts: TokenStream,
+    span: Span,
 }
 
 impl std::fmt::Debug for SalsaAttr {
@@ -44,6 +46,8 @@ impl TryFrom<syn::Attribute> for SalsaAttr {
             return Err(attr);
         }
 
+        let span = attr.span();
+
         let name = attr.path().segments[1].ident.to_string();
         let tts = match attr.meta {
             syn::Meta::Path(path) => path.into_token_stream(),
@@ -58,7 +62,7 @@ impl TryFrom<syn::Attribute> for SalsaAttr {
         }
         .into();
 
-        Ok(SalsaAttr { name, tts })
+        Ok(SalsaAttr { name, tts, span })
     }
 }
 
@@ -84,6 +88,13 @@ fn filter_attrs(attrs: Vec<Attribute>) -> (Vec<Attribute>, Vec<SalsaAttr>) {
         }
     }
     (other, ra_salsa)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum QueryKind {
+    Input,
+    Tracked,
+    Transparent,
 }
 
 pub(crate) fn db_ext_impl(
@@ -142,70 +153,103 @@ pub(crate) fn db_ext_impl(
 
                 let (_attrs, salsa_attrs) = filter_attrs(method.attrs);
 
-                if salsa_attrs.is_empty() {
-                    let method = TrackedQuery {
-                        trait_name: trait_name_ident.clone(),
-                        input_struct_name: input_struct_name.clone(),
-                        signature: method.sig.clone(),
-                        typed: typed.clone(),
-                    };
+                // two cases: invoke + cycle, invoke + transparent.
+                let mut query_kind = QueryKind::Tracked;
+                let mut invoke = None;
+                let syn::ReturnType::Type(_, return_type) = &signature.output else {
+                    return Err(syn::Error::new(signature.span(), "expected a return type"));
+                };
 
-                    trait_methods.push(Queries::TrackedQuery(method));
-                } else {
-                    for SalsaAttr { name, tts, .. } in salsa_attrs {
-                        match name.as_str() {
-                            "invoke" => {
-                                let invoke = match syn::parse::<Parenthesized<syn::Path>>(tts) {
-                                    Ok(path) => path,
-                                    Err(e) => return Err(e),
-                                };
-
-                                let method = TrackedInvokeQuery {
-                                    trait_name: trait_name_ident.clone(),
-                                    input_struct_name: input_struct_name.clone(),
-                                    signature: signature.clone(),
-                                    typed: typed.clone(),
-                                    invoke: invoke.0,
-                                };
-
-                                trait_methods.push(Queries::TrackedInvokeQuery(method));
-                            }
-                            "input" => {
-                                let syn::ReturnType::Type(_, return_type) = &signature.output
-                                else {
-                                    return Err(syn::Error::new(
-                                        signature.span(),
-                                        "expected `name`",
-                                    ));
-                                };
-
-                                let query = InputQuery {
-                                    signature: method.sig.clone(),
-                                };
-                                let value = Queries::InputQuery(query);
-                                trait_methods.push(value);
-
-                                let setter = InputSetter {
-                                    signature: method.sig.clone(),
-                                    return_type: *return_type.clone(),
-                                };
-                                setter_trait_methods.push(SetterKind::Plain(setter));
-
-                                let setter = InputSetterWithDurability {
-                                    signature: method.sig.clone(),
-                                    return_type: *return_type.clone(),
-                                };
-                                setter_trait_methods.push(SetterKind::WithDurability(setter));
-                            }
-                            "transparent" => {
-                                let method = Transparent {
-                                    signature: method.sig.clone(),
-                                    typed: typed.clone(),
-                                };
-                                trait_methods.push(Queries::Transparent(method));
-                            }
-                            _ => continue,
+                for SalsaAttr { name, tts, span } in salsa_attrs {
+                    match name.as_str() {
+                        "invoke" => {
+                            let path = match syn::parse::<Parenthesized<Path>>(tts) {
+                                Ok(path) => path,
+                                Err(e) => return Err(e),
+                            };
+                            invoke = Some(path.0.clone());
                         }
+                        "input" => {
+                            query_kind = QueryKind::Input;
+                        }
+                        "transparent" => {
+                            query_kind = QueryKind::Transparent;
+                        }
+                        _ => {
+                            return Err(syn::Error::new(
+                                span.clone(),
+                                format!("unknown attribute `{name}`"),
+                            ))
+                        }
+                    }
+                }
+
+                match (query_kind, invoke) {
+                    // input
+                    (QueryKind::Input, None) => {
+                        let query = InputQuery {
+                            signature: method.sig.clone(),
+                        };
+                        let value = Queries::InputQuery(query);
+                        trait_methods.push(value);
+
+                        let setter = InputSetter {
+                            signature: method.sig.clone(),
+                            return_type: *return_type.clone(),
+                        };
+                        setter_trait_methods.push(SetterKind::Plain(setter));
+
+                        let setter = InputSetterWithDurability {
+                            signature: method.sig.clone(),
+                            return_type: *return_type.clone(),
+                        };
+                        setter_trait_methods.push(SetterKind::WithDurability(setter));
+                    }
+                    // tracked function without *any* invoke.
+                    (QueryKind::Tracked, None) => {
+                        let method = TrackedQuery {
+                            trait_name: trait_name_ident.clone(),
+                            input_struct_name: input_struct_name.clone(),
+                            signature: signature.clone(),
+                            typed: typed.clone(),
+                            invoke: None,
+                        };
+
+                        trait_methods.push(Queries::TrackedQuery(method));
+                    }
+                    // tracked function with an invoke
+                    (QueryKind::Tracked, Some(invoke)) => {
+                        let method = TrackedQuery {
+                            trait_name: trait_name_ident.clone(),
+                            input_struct_name: input_struct_name.clone(),
+                            signature: signature.clone(),
+                            typed: typed.clone(),
+                            invoke: Some(invoke),
+                        };
+
+                        trait_methods.push(Queries::TrackedQuery(method))
+                    }
+                    (QueryKind::Transparent, None) => {
+                        let method = Transparent {
+                            signature: method.sig.clone(),
+                            typed: typed.clone(),
+                            invoke: None,
+                        };
+                        trait_methods.push(Queries::Transparent(method));
+                    }
+                    (QueryKind::Transparent, Some(invoke)) => {
+                        let method = Transparent {
+                            signature: method.sig.clone(),
+                            typed: typed.clone(),
+                            invoke: Some(invoke),
+                        };
+                        trait_methods.push(Queries::Transparent(method));
+                    }
+                    (QueryKind::Input, Some(path)) => {
+                        return Err(syn::Error::new(
+                            path.span(),
+                            format!("Inputs should not have an #[invoke]"),
+                        ))
                     }
                 }
             }

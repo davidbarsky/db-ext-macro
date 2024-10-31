@@ -197,6 +197,7 @@ pub(crate) fn db_ext_impl(
                             signature: method.sig.clone(),
                             return_type: *return_type.clone(),
                         };
+
                         setter_trait_methods.push(SetterKind::Plain(setter));
 
                         let setter = InputSetterWithDurability {
@@ -311,24 +312,21 @@ pub(crate) fn db_ext_impl(
         where
             DB: #trait_name_ident,
         {
-
         }
     };
 
     let out = quote! {
         #item_trait
 
-        // const hidden: () = {
-            #input_struct
+        #ext_trait
 
-            #create_data_method
+        #input_struct
 
-            #trait_impl
+        #create_data_method
 
-            #ext_trait
+        #trait_impl
 
-            #ext_trait_impl
-        // };
+        #ext_trait_impl
     }
     .into();
 

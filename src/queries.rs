@@ -66,17 +66,16 @@ pub(crate) struct InputSetter {
 
 impl ToTokens for InputSetter {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let sig = &self.signature;
-        let ty = &self.return_type;
-        let fn_ident: &Ident = &sig.ident;
+        let sig = &mut self.signature.clone();
 
-        let mut sig = self.signature.clone();
-        sig.ident = format_ident!("set_{}", fn_ident);
-        let sig_ident = &sig.ident;
+        let ty = &self.return_type;
+        let fn_ident = &sig.ident;
+
+        let setter_ident = format_ident!("set_{}", fn_ident);
+        sig.ident = setter_ident.clone();
 
         let value_argument: PatType = parse_quote!(__value: #ty);
-        let pat = &value_argument.pat.clone();
-        sig.inputs.push(FnArg::Typed(value_argument));
+        sig.inputs.push(FnArg::Typed(value_argument.clone()));
 
         // make `&self` `&mut self` instead.
         let mut_recevier: Receiver = parse_quote!(&mut self);
@@ -87,10 +86,11 @@ impl ToTokens for InputSetter {
         // remove the return value.
         sig.output = ReturnType::Default;
 
+        let value = &value_argument.pat;
         let method = quote! {
             #sig {
                 let data = create_data(self);
-                data.#sig_ident(self).to(Some(#pat));
+                data.#setter_ident(self).to(Some(#value));
             }
         };
         method.to_tokens(tokens);
@@ -104,21 +104,19 @@ pub(crate) struct InputSetterWithDurability {
 
 impl ToTokens for InputSetterWithDurability {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
-        let sig = &self.signature;
+        let sig = &mut self.signature.clone();
+
         let ty = &self.return_type;
         let fn_ident = &sig.ident;
+        let setter_ident = format_ident!("set_{}", fn_ident);
 
-        let mut sig = self.signature.clone();
         sig.ident = format_ident!("set_{}_with_durability", fn_ident);
-        let sig_ident = format_ident!("set_{}", fn_ident);
 
         let value_argument: PatType = parse_quote!(__value: #ty);
-        let value_pat = &value_argument.pat.clone();
-        sig.inputs.push(FnArg::Typed(value_argument));
+        sig.inputs.push(FnArg::Typed(value_argument.clone()));
 
         let durability_argument: PatType = parse_quote!(durability: salsa::Durability);
-        let durability_pat = &durability_argument.pat.clone();
-        sig.inputs.push(FnArg::Typed(durability_argument));
+        sig.inputs.push(FnArg::Typed(durability_argument.clone()));
 
         // make `&self` `&mut self` instead.
         let mut_recevier: Receiver = parse_quote!(&mut self);
@@ -129,12 +127,14 @@ impl ToTokens for InputSetterWithDurability {
         // remove the return value.
         sig.output = ReturnType::Default;
 
+        let value = &value_argument.pat;
+        let durability = &durability_argument.pat;
         let method = quote! {
             #sig {
                 let data = create_data(self);
-                data.#sig_ident(self)
-                    .with_durability(#durability_pat)
-                    .to(Some(#value_pat));
+                data.#setter_ident(self)
+                    .with_durability(#durability)
+                    .to(Some(#value));
             }
         };
         method.to_tokens(tokens);

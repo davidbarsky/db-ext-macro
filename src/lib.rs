@@ -1,3 +1,5 @@
+use core::fmt;
+
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use queries::{
@@ -23,7 +25,13 @@ pub fn query_group(args: TokenStream, input: TokenStream) -> TokenStream {
 #[derive(Debug)]
 struct InputStructField {
     name: Ident,
-    return_type: Ident,
+    return_ty: proc_macro2::TokenStream,
+}
+
+impl fmt::Display for InputStructField {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)
+    }
 }
 
 struct SalsaAttr {
@@ -132,13 +140,9 @@ pub(crate) fn query_group_impl(
                             continue;
                         };
 
-                        let Some(ident) = expr.path.get_ident() else {
-                            continue;
-                        };
-
                         let field = InputStructField {
                             name: name.clone(),
-                            return_type: ident.clone(),
+                            return_ty: expr.path.to_token_stream(),
                         };
                         input_struct_fields.push(field);
                     }
@@ -273,7 +277,7 @@ pub(crate) fn query_group_impl(
         .into_iter()
         .map(|input| {
             let name = input.name;
-            let ret = input.return_type;
+            let ret = input.return_ty;
             quote! { #name: Option<#ret> }
         })
         .collect::<Vec<proc_macro2::TokenStream>>();

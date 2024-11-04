@@ -108,8 +108,8 @@ fn new_salsa_baseline() {
 
     assert_eq!(len, 13);
     db.assert_logs(expect![[r#"
-    [
-        "salsa_event(WillCheckCancellation)",
-        "salsa_event(WillExecute { database_key: new_salsa_length_query(Id(0)) })",
+        [
+            "salsa_event(WillCheckCancellation)",
+            "salsa_event(WillExecute { database_key: new_salsa_length_query(Id(0)) })",
         ]"#]]);
 }

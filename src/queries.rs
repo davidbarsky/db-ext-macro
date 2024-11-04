@@ -23,17 +23,20 @@ impl ToTokens for TrackedQuery {
             None => sig.ident.to_token_stream(),
         };
 
+        let fn_ident = &sig.ident;
+        let shim: Ident = format_ident!("{}_shim", fn_ident);
+
         let method = quote! {
             #sig {
                 #[salsa::tracked]
-                fn __shim__(
+                fn #shim(
                     db: &dyn #trait_name,
                     _input: #input_struct_name,
                     #type_ascription,
                 ) #ret {
                     #invoke(db, #typed)
                 }
-                __shim__(self, create_data(self), #typed)
+                #shim(self, create_data(self), #typed)
             }
         };
         method.to_tokens(tokens);

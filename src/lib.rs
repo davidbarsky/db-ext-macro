@@ -13,8 +13,8 @@ use syn::{ItemTrait, TraitItem};
 mod queries;
 
 #[proc_macro_attribute]
-pub fn db_ext(args: TokenStream, input: TokenStream) -> TokenStream {
-    match db_ext_impl(args, input.clone()) {
+pub fn query_group(args: TokenStream, input: TokenStream) -> TokenStream {
+    match query_group_impl(args, input.clone()) {
         Ok(tokens) => tokens.into(),
         Err(e) => token_stream_with_error(input, e),
     }
@@ -97,7 +97,7 @@ enum QueryKind {
     Transparent,
 }
 
-pub(crate) fn db_ext_impl(
+pub(crate) fn query_group_impl(
     _args: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> Result<proc_macro::TokenStream, syn::Error> {

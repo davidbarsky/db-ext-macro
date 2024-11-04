@@ -7,6 +7,7 @@ pub(crate) struct TrackedQuery {
     pub(crate) signature: Signature,
     pub(crate) typed: PatType,
     pub(crate) invoke: Option<Path>,
+    pub(crate) cycle: Option<Path>,
 }
 
 impl ToTokens for TrackedQuery {
@@ -26,9 +27,14 @@ impl ToTokens for TrackedQuery {
         let fn_ident = &sig.ident;
         let shim: Ident = format_ident!("{}_shim", fn_ident);
 
+        let annotation = match &self.cycle {
+            Some(path) => quote!(#[salsa::tracked(recovery_fn=#path)]),
+            None => quote!(#[salsa::tracked]),
+        };
+
         let method = quote! {
             #sig {
-                #[salsa::tracked]
+                #annotation
                 fn #shim(
                     db: &dyn #trait_name,
                     _input: #input_struct_name,

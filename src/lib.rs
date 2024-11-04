@@ -156,6 +156,7 @@ pub(crate) fn query_group_impl(
                 // two cases: invoke + cycle, invoke + transparent.
                 let mut query_kind = QueryKind::Tracked;
                 let mut invoke = None;
+                let mut cycle = None;
                 let syn::ReturnType::Type(_, return_type) = &signature.output else {
                     return Err(syn::Error::new(signature.span(), "expected a return type"));
                 };
@@ -174,6 +175,13 @@ pub(crate) fn query_group_impl(
                         }
                         "transparent" => {
                             query_kind = QueryKind::Transparent;
+                        }
+                        "cycle" => {
+                            let path = match syn::parse::<Parenthesized<Path>>(tts) {
+                                Ok(path) => path,
+                                Err(e) => return Err(e),
+                            };
+                            cycle = Some(path.0.clone())
                         }
                         _ => {
                             return Err(syn::Error::new(
@@ -214,6 +222,7 @@ pub(crate) fn query_group_impl(
                             signature: signature.clone(),
                             typed: typed.clone(),
                             invoke: None,
+                            cycle,
                         };
 
                         trait_methods.push(Queries::TrackedQuery(method));
@@ -226,6 +235,7 @@ pub(crate) fn query_group_impl(
                             signature: signature.clone(),
                             typed: typed.clone(),
                             invoke: Some(invoke),
+                            cycle,
                         };
 
                         trait_methods.push(Queries::TrackedQuery(method))

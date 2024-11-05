@@ -5,7 +5,7 @@ pub(crate) struct TrackedQuery {
     pub(crate) trait_name: Ident,
     pub(crate) input_struct_name: Ident,
     pub(crate) signature: Signature,
-    pub(crate) typed: PatType,
+    pub(crate) typed: Option<PatType>,
     pub(crate) invoke: Option<Path>,
     pub(crate) cycle: Option<Path>,
 }
@@ -16,8 +16,6 @@ impl ToTokens for TrackedQuery {
         let trait_name = &self.trait_name;
         let input_struct_name = &self.input_struct_name;
         let ret = &sig.output;
-        let type_ascription = &self.typed;
-        let typed = &self.typed.pat;
 
         let invoke = match &self.invoke {
             Some(path) => path.to_token_stream(),
@@ -32,19 +30,41 @@ impl ToTokens for TrackedQuery {
             None => quote!(#[salsa::tracked]),
         };
 
-        let method = quote! {
-            #sig {
-                #annotation
-                fn #shim(
-                    db: &dyn #trait_name,
-                    _input: #input_struct_name,
-                    #type_ascription,
-                ) #ret {
-                    #invoke(db, #typed)
+        let method = match &self.typed {
+            Some(pat) => {
+                let type_ascription = pat;
+                let typed = &pat.pat;
+
+                quote! {
+                    #sig {
+                        #annotation
+                        fn #shim(
+                            db: &dyn #trait_name,
+                            _input: #input_struct_name,
+                            #type_ascription,
+                        ) #ret {
+                            #invoke(db, #typed)
+                        }
+                        #shim(self, create_data(self), #typed)
+                    }
                 }
-                #shim(self, create_data(self), #typed)
+            }
+            None => {
+                quote! {
+                    #sig {
+                        #annotation
+                        fn #shim(
+                            db: &dyn #trait_name,
+                            _input: #input_struct_name
+                        ) #ret {
+                            #invoke(db)
+                        }
+                        #shim(self, create_data(self))
+                    }
+                }
             }
         };
+
         method.to_tokens(tokens);
     }
 }
@@ -64,6 +84,7 @@ impl ToTokens for InputQuery {
                 data.#fn_ident(self).unwrap()
             }
         };
+        eprintln!("{}", method);
         method.to_tokens(tokens);
     }
 }

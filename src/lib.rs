@@ -9,7 +9,7 @@ use queries::{
 use quote::{format_ident, quote, ToTokens};
 use syn::spanned::Spanned;
 use syn::visit_mut::VisitMut;
-use syn::{parse_quote, Attribute, FnArg, Ident, Path};
+use syn::{parse_quote, Attribute, FnArg, Path};
 use syn::{ItemTrait, TraitItem};
 
 mod queries;
@@ -24,8 +24,8 @@ pub fn query_group(args: TokenStream, input: TokenStream) -> TokenStream {
 
 #[derive(Debug)]
 struct InputStructField {
-    name: Ident,
-    return_ty: proc_macro2::TokenStream,
+    name: proc_macro2::TokenStream,
+    ty: proc_macro2::TokenStream,
 }
 
 impl fmt::Display for InputStructField {
@@ -129,7 +129,7 @@ pub(crate) fn query_group_impl(
     for item in item_trait.clone().items {
         match item {
             syn::TraitItem::Fn(method) => {
-                let name = &method.sig.ident;
+                let method_name = &method.sig.ident;
                 let signature = &method.sig.clone();
 
                 let return_type = signature.output.clone();
@@ -141,26 +141,31 @@ pub(crate) fn query_group_impl(
                         };
 
                         let field = InputStructField {
-                            name: name.clone(),
-                            return_ty: expr.path.to_token_stream(),
+                            name: method_name.to_token_stream(),
+                            ty: expr.path.to_token_stream(),
                         };
                         input_struct_fields.push(field);
                     }
                 }
+
+                let (_attrs, salsa_attrs) = filter_attrs(method.attrs);
+
+                let mut typed = None;
+                let mut query_kind = QueryKind::Tracked;
+                let mut invoke = None;
+                let mut cycle = None;
+
                 let params: Vec<FnArg> = signature.inputs.clone().into_iter().collect();
 
                 // we want first query, as we later replace the receiver with a `&dyn Db`
                 // in tracked functions.
-                let [FnArg::Receiver(_), FnArg::Typed(typed)] = params.as_slice() else {
-                    continue;
+                match params.as_slice() {
+                    [] => return Err(syn::Error::new(signature.span(), "expected `&self`")),
+                    [FnArg::Receiver(_recv)] => {}
+                    [FnArg::Receiver(_recv), FnArg::Typed(ty)] => typed = Some(ty),
+                    _ => continue,
                 };
 
-                let (_attrs, salsa_attrs) = filter_attrs(method.attrs);
-
-                // two cases: invoke + cycle, invoke + transparent.
-                let mut query_kind = QueryKind::Tracked;
-                let mut invoke = None;
-                let mut cycle = None;
                 let syn::ReturnType::Type(_, return_type) = &signature.output else {
                     return Err(syn::Error::new(signature.span(), "expected a return type"));
                 };
@@ -174,7 +179,15 @@ pub(crate) fn query_group_impl(
                             };
                             invoke = Some(path.0.clone());
                         }
+
                         "input" => {
+                            if let Some(pat_type) = typed {
+                                let input = InputStructField {
+                                    name: pat_type.pat.to_token_stream(),
+                                    ty: pat_type.ty.to_token_stream(),
+                                };
+                                input_struct_fields.push(input);
+                            }
                             query_kind = QueryKind::Input;
                         }
                         "transparent" => {
@@ -224,7 +237,7 @@ pub(crate) fn query_group_impl(
                             trait_name: trait_name_ident.clone(),
                             input_struct_name: input_struct_name.clone(),
                             signature: signature.clone(),
-                            typed: typed.clone(),
+                            typed: typed.cloned(),
                             invoke: None,
                             cycle,
                         };
@@ -237,7 +250,7 @@ pub(crate) fn query_group_impl(
                             trait_name: trait_name_ident.clone(),
                             input_struct_name: input_struct_name.clone(),
                             signature: signature.clone(),
-                            typed: typed.clone(),
+                            typed: typed.cloned(),
                             invoke: Some(invoke),
                             cycle,
                         };
@@ -247,7 +260,7 @@ pub(crate) fn query_group_impl(
                     (QueryKind::Transparent, None) => {
                         let method = Transparent {
                             signature: method.sig.clone(),
-                            typed: typed.clone(),
+                            typed: typed.unwrap().clone(),
                             invoke: None,
                         };
                         trait_methods.push(Queries::Transparent(method));
@@ -255,7 +268,7 @@ pub(crate) fn query_group_impl(
                     (QueryKind::Transparent, Some(invoke)) => {
                         let method = Transparent {
                             signature: method.sig.clone(),
-                            typed: typed.clone(),
+                            typed: typed.unwrap().clone(),
                             invoke: Some(invoke),
                         };
                         trait_methods.push(Queries::Transparent(method));
@@ -263,7 +276,7 @@ pub(crate) fn query_group_impl(
                     (QueryKind::Input, Some(path)) => {
                         return Err(syn::Error::new(
                             path.span(),
-                            format!("Inputs should not have an #[invoke]"),
+                            format!("Inputs cannot have an `#[invoke]`"),
                         ))
                     }
                 }
@@ -277,7 +290,7 @@ pub(crate) fn query_group_impl(
         .into_iter()
         .map(|input| {
             let name = input.name;
-            let ret = input.return_ty;
+            let ret = input.ty;
             quote! { #name: Option<#ret> }
         })
         .collect::<Vec<proc_macro2::TokenStream>>();
@@ -288,6 +301,7 @@ pub(crate) fn query_group_impl(
             #(#fields),*
         }
     };
+    eprintln!("{}", input_struct);
     let field_params = std::iter::repeat_n(quote! { None }, fields.len())
         .collect::<Vec<proc_macro2::TokenStream>>();
 

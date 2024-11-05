@@ -13,6 +13,13 @@ pub trait HelloWorldDatabase: salsa::Database {
     // unadorned query
     fn length_query(&self, key: ()) -> usize;
 
+    // input with no params
+    #[db_ext_macro::input]
+    fn input_string_with_no_params(&self) -> String;
+
+    // unadorned query
+    fn length_query_with_no_params(&self) -> usize;
+
     // renamed/invoke query
     #[db_ext_macro::invoke(invoke_length_query_actual)]
     fn invoke_length_query(&self, key: ()) -> usize;
@@ -28,6 +35,10 @@ pub trait HelloWorldDatabase: salsa::Database {
 
 fn length_query(db: &dyn HelloWorldDatabase, key: ()) -> usize {
     db.input_string(key).len()
+}
+
+fn length_query_with_no_params(db: &dyn HelloWorldDatabase) -> usize {
+    db.input_string_with_no_params().len()
 }
 
 fn invoke_length_query_actual(db: &dyn HelloWorldDatabase, key: ()) -> usize {
@@ -58,6 +69,26 @@ fn unadorned_query() {
             "salsa_event(DidValidateMemoizedValue { database_key: create_data(Id(0)) })",
             "salsa_event(WillCheckCancellation)",
             "salsa_event(WillExecute { database_key: length_query_shim(Id(800)) })",
+            "salsa_event(WillCheckCancellation)",
+        ]"#]]);
+}
+
+#[test]
+fn input_with_no_params() {
+    let mut db = LoggerDb::default();
+
+    db.set_input_string_with_no_params(String::from("Hello, world!"));
+    let len = db.length_query_with_no_params();
+
+    assert_eq!(len, 13);
+    db.assert_logs(expect![[r#"
+        [
+            "salsa_event(WillCheckCancellation)",
+            "salsa_event(WillExecute { database_key: create_data(Id(0)) })",
+            "salsa_event(WillCheckCancellation)",
+            "salsa_event(DidValidateMemoizedValue { database_key: create_data(Id(0)) })",
+            "salsa_event(WillCheckCancellation)",
+            "salsa_event(WillExecute { database_key: length_query_with_no_params_shim(Id(400)) })",
             "salsa_event(WillCheckCancellation)",
         ]"#]]);
 }

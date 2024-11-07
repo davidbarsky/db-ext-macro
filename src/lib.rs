@@ -182,11 +182,10 @@ pub(crate) fn query_group_impl(
 
                         "input" => {
                             if let Some(pat_type) = typed {
-                                let input = InputStructField {
-                                    name: pat_type.pat.to_token_stream(),
-                                    ty: pat_type.ty.to_token_stream(),
-                                };
-                                input_struct_fields.push(input);
+                                return Err(syn::Error::new(
+                                    pat_type.span(),
+                                    "input methods cannot have a parameter",
+                                ));
                             }
                             query_kind = QueryKind::Input;
                         }

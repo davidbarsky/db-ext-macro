@@ -7,15 +7,12 @@ use logger_db::LoggerDb;
 #[query_group]
 pub trait HelloWorldDatabase: salsa::Database {
     // input
+    // // input with no params
     #[db_ext_macro::input]
-    fn input_string(&self, key: ()) -> String;
+    fn input_string(&self) -> String;
 
     // unadorned query
     fn length_query(&self, key: ()) -> usize;
-
-    // input with no params
-    #[db_ext_macro::input]
-    fn input_string_with_no_params(&self) -> String;
 
     // unadorned query
     fn length_query_with_no_params(&self) -> usize;
@@ -34,30 +31,34 @@ pub trait HelloWorldDatabase: salsa::Database {
 }
 
 fn length_query(db: &dyn HelloWorldDatabase, key: ()) -> usize {
-    db.input_string(key).len()
+    let _ = key;
+    db.input_string().len()
 }
 
 fn length_query_with_no_params(db: &dyn HelloWorldDatabase) -> usize {
-    db.input_string_with_no_params().len()
+    db.input_string().len()
 }
 
 fn invoke_length_query_actual(db: &dyn HelloWorldDatabase, key: ()) -> usize {
-    db.input_string(key).len()
+    let _ = key;
+    db.input_string().len()
 }
 
 fn transparent_length(db: &dyn HelloWorldDatabase, key: ()) -> usize {
-    db.input_string(key).len()
+    let _ = key;
+    db.input_string().len()
 }
 
 fn transparent_and_invoke_length_actual(db: &dyn HelloWorldDatabase, key: ()) -> usize {
-    db.input_string(key).len()
+    let _ = key;
+    db.input_string().len()
 }
 
 #[test]
 fn unadorned_query() {
     let mut db = LoggerDb::default();
 
-    db.set_input_string((), String::from("Hello, world!"));
+    db.set_input_string(String::from("Hello, world!"));
     let len = db.length_query(());
 
     assert_eq!(len, 13);
@@ -74,30 +75,10 @@ fn unadorned_query() {
 }
 
 #[test]
-fn input_with_no_params() {
-    let mut db = LoggerDb::default();
-
-    db.set_input_string_with_no_params(String::from("Hello, world!"));
-    let len = db.length_query_with_no_params();
-
-    assert_eq!(len, 13);
-    db.assert_logs(expect![[r#"
-        [
-            "salsa_event(WillCheckCancellation)",
-            "salsa_event(WillExecute { database_key: create_data(Id(0)) })",
-            "salsa_event(WillCheckCancellation)",
-            "salsa_event(DidValidateMemoizedValue { database_key: create_data(Id(0)) })",
-            "salsa_event(WillCheckCancellation)",
-            "salsa_event(WillExecute { database_key: length_query_with_no_params_shim(Id(400)) })",
-            "salsa_event(WillCheckCancellation)",
-        ]"#]]);
-}
-
-#[test]
 fn invoke_query() {
     let mut db = LoggerDb::default();
 
-    db.set_input_string((), String::from("Hello, world!"));
+    db.set_input_string(String::from("Hello, world!"));
     let len = db.invoke_length_query(());
 
     assert_eq!(len, 13);
@@ -117,7 +98,7 @@ fn invoke_query() {
 fn transparent() {
     let mut db = LoggerDb::default();
 
-    db.set_input_string((), String::from("Hello, world!"));
+    db.set_input_string(String::from("Hello, world!"));
     let len = db.transparent_length(());
 
     assert_eq!(len, 13);
@@ -134,7 +115,7 @@ fn transparent() {
 fn transparent_invoke() {
     let mut db = LoggerDb::default();
 
-    db.set_input_string((), String::from("Hello, world!"));
+    db.set_input_string(String::from("Hello, world!"));
     let len = db.transparent_and_invoke_length(());
 
     assert_eq!(len, 13);

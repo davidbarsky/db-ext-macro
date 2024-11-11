@@ -300,7 +300,7 @@ pub(crate) fn query_group_impl(
             #(#fields),*
         }
     };
-    eprintln!("{}", input_struct);
+
     let field_params = std::iter::repeat_n(quote! { None }, fields.len())
         .collect::<Vec<proc_macro2::TokenStream>>();
 

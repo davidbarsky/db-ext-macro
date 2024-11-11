@@ -84,7 +84,6 @@ impl ToTokens for InputQuery {
                 data.#fn_ident(self).unwrap()
             }
         };
-        eprintln!("{}", method);
         method.to_tokens(tokens);
     }
 }

@@ -8,6 +8,7 @@ pub(crate) struct TrackedQuery {
     pub(crate) typed: Option<PatType>,
     pub(crate) invoke: Option<Path>,
     pub(crate) cycle: Option<Path>,
+    pub(crate) create_data_ident: Ident,
 }
 
 impl ToTokens for TrackedQuery {
@@ -15,6 +16,7 @@ impl ToTokens for TrackedQuery {
         let sig = &self.signature;
         let trait_name = &self.trait_name;
         let input_struct_name = &self.input_struct_name;
+        let create_data_ident = &self.create_data_ident;
         let ret = &sig.output;
 
         let invoke = match &self.invoke {
@@ -45,7 +47,7 @@ impl ToTokens for TrackedQuery {
                         ) #ret {
                             #invoke(db, #typed)
                         }
-                        #shim(self, create_data(self), #typed)
+                        #shim(self, #create_data_ident(self), #typed)
                     }
                 }
             }
@@ -59,7 +61,7 @@ impl ToTokens for TrackedQuery {
                         ) #ret {
                             #invoke(db)
                         }
-                        #shim(self, create_data(self))
+                        #shim(self, #create_data_ident(self))
                     }
                 }
             }
@@ -71,16 +73,18 @@ impl ToTokens for TrackedQuery {
 
 pub(crate) struct InputQuery {
     pub(crate) signature: Signature,
+    pub(crate) create_data_ident: Ident,
 }
 
 impl ToTokens for InputQuery {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let sig = &self.signature;
         let fn_ident = &sig.ident;
+        let create_data_ident = &self.create_data_ident;
 
         let method = quote! {
             #sig {
-                let data = create_data(self);
+                let data = #create_data_ident(self);
                 data.#fn_ident(self).unwrap()
             }
         };
@@ -91,6 +95,7 @@ impl ToTokens for InputQuery {
 pub(crate) struct InputSetter {
     pub(crate) signature: Signature,
     pub(crate) return_type: syn::Type,
+    pub(crate) create_data_ident: Ident,
 }
 
 impl ToTokens for InputSetter {
@@ -99,6 +104,7 @@ impl ToTokens for InputSetter {
 
         let ty = &self.return_type;
         let fn_ident = &sig.ident;
+        let create_data_ident = &self.create_data_ident;
 
         let setter_ident = format_ident!("set_{}", fn_ident);
         sig.ident = setter_ident.clone();
@@ -118,7 +124,7 @@ impl ToTokens for InputSetter {
         let value = &value_argument.pat;
         let method = quote! {
             #sig {
-                let data = create_data(self);
+                let data = #create_data_ident(self);
                 data.#setter_ident(self).to(Some(#value));
             }
         };
@@ -129,6 +135,7 @@ impl ToTokens for InputSetter {
 pub(crate) struct InputSetterWithDurability {
     pub(crate) signature: Signature,
     pub(crate) return_type: syn::Type,
+    pub(crate) create_data_ident: Ident,
 }
 
 impl ToTokens for InputSetterWithDurability {
@@ -138,6 +145,8 @@ impl ToTokens for InputSetterWithDurability {
         let ty = &self.return_type;
         let fn_ident = &sig.ident;
         let setter_ident = format_ident!("set_{}", fn_ident);
+
+        let create_data_ident = &self.create_data_ident;
 
         sig.ident = format_ident!("set_{}_with_durability", fn_ident);
 
@@ -160,7 +169,7 @@ impl ToTokens for InputSetterWithDurability {
         let durability = &durability_argument.pat;
         let method = quote! {
             #sig {
-                let data = create_data(self);
+                let data = #create_data_ident(self);
                 data.#setter_ident(self)
                     .with_durability(#durability)
                     .to(Some(#value));

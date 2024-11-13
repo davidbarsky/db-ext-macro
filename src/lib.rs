@@ -121,6 +121,7 @@ pub(crate) fn query_group_impl(
 
     let trait_name_ident = &item_trait.ident.clone();
     let input_struct_name = format_ident!("{}Data", trait_name_ident);
+    let create_data_ident = format_ident!("create_data_{}", trait_name_ident);
 
     let mut input_struct_fields: Vec<InputStructField> = vec![];
     let mut trait_methods = vec![];
@@ -213,6 +214,7 @@ pub(crate) fn query_group_impl(
                     (QueryKind::Input, None) => {
                         let query = InputQuery {
                             signature: method.sig.clone(),
+                            create_data_ident: create_data_ident.clone(),
                         };
                         let value = Queries::InputQuery(query);
                         trait_methods.push(value);
@@ -220,6 +222,7 @@ pub(crate) fn query_group_impl(
                         let setter = InputSetter {
                             signature: method.sig.clone(),
                             return_type: *return_type.clone(),
+                            create_data_ident: create_data_ident.clone(),
                         };
 
                         setter_trait_methods.push(SetterKind::Plain(setter));
@@ -227,6 +230,7 @@ pub(crate) fn query_group_impl(
                         let setter = InputSetterWithDurability {
                             signature: method.sig.clone(),
                             return_type: *return_type.clone(),
+                            create_data_ident: create_data_ident.clone(),
                         };
                         setter_trait_methods.push(SetterKind::WithDurability(setter));
                     }
@@ -239,6 +243,7 @@ pub(crate) fn query_group_impl(
                             typed: typed.cloned(),
                             invoke: None,
                             cycle,
+                            create_data_ident: create_data_ident.clone(),
                         };
 
                         trait_methods.push(Queries::TrackedQuery(method));
@@ -252,6 +257,7 @@ pub(crate) fn query_group_impl(
                             typed: typed.cloned(),
                             invoke: Some(invoke),
                             cycle,
+                            create_data_ident: create_data_ident.clone(),
                         };
 
                         trait_methods.push(Queries::TrackedQuery(method))
@@ -305,8 +311,9 @@ pub(crate) fn query_group_impl(
         .collect::<Vec<proc_macro2::TokenStream>>();
 
     let create_data_method = quote! {
+        #[allow(non_snake_case)]
         #[salsa::tracked]
-        fn create_data(db: &dyn #trait_name_ident) -> #input_struct_name {
+        fn #create_data_ident(db: &dyn #trait_name_ident) -> #input_struct_name {
             #input_struct_name::new(db, #(#field_params),*)
         }
     };
@@ -333,8 +340,6 @@ pub(crate) fn query_group_impl(
     };
 
     let ext_trait_impl = quote! {
-        use salsa::Setter;
-
         impl<DB> #ext_trait_ident for DB
         where
             DB: #trait_name_ident,
@@ -345,13 +350,13 @@ pub(crate) fn query_group_impl(
     let out = quote! {
         #item_trait
 
-        #ext_trait
+        #trait_impl
 
         #input_struct
 
         #create_data_method
 
-        #trait_impl
+        #ext_trait
 
         #ext_trait_impl
     }

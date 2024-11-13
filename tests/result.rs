@@ -1,4 +1,5 @@
 use db_ext_macro::query_group;
+use salsa::Setter;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Error;

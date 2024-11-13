@@ -114,6 +114,8 @@ pub(crate) fn query_group_impl(
         Err(e) => return Err(e),
     };
 
+    let supertraits = &item_trait.supertraits;
+
     let db_attr: Attribute = parse_quote! {
         #[salsa::db]
     };
@@ -322,7 +324,7 @@ pub(crate) fn query_group_impl(
         #[salsa::db]
         impl<DB> #trait_name_ident for DB
         where
-            DB: salsa::Database,
+            DB: #supertraits,
         {
             #(#trait_methods)*
         }

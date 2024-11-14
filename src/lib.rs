@@ -267,7 +267,11 @@ pub(crate) fn query_group_impl(
                     (QueryKind::Transparent, None) => {
                         let method = Transparent {
                             signature: method.sig.clone(),
-                            typed: typed.unwrap().clone(),
+                            typed: typed
+                                .expect(
+                                    "query parameter was expected, but was not set. this is a bug (no invoke)",
+                                )
+                                .clone(),
                             invoke: None,
                         };
                         trait_methods.push(Queries::Transparent(method));
@@ -275,7 +279,9 @@ pub(crate) fn query_group_impl(
                     (QueryKind::Transparent, Some(invoke)) => {
                         let method = Transparent {
                             signature: method.sig.clone(),
-                            typed: typed.unwrap().clone(),
+                            typed: typed
+                                .expect("query parameter expected, but was not set. this is a bug (invoke)")
+                                .clone(),
                             invoke: Some(invoke),
                         };
                         trait_methods.push(Queries::Transparent(method));

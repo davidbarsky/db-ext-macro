@@ -5,7 +5,7 @@ pub(crate) struct TrackedQuery {
     pub(crate) trait_name: Ident,
     pub(crate) input_struct_name: Ident,
     pub(crate) signature: Signature,
-    pub(crate) typed: Option<PatType>,
+    pub(crate) pat_and_tys: Vec<PatType>,
     pub(crate) invoke: Option<Path>,
     pub(crate) cycle: Option<Path>,
     pub(crate) create_data_ident: Ident,
@@ -32,40 +32,42 @@ impl ToTokens for TrackedQuery {
             None => quote!(#[salsa::tracked]),
         };
 
-        let method = match &self.typed {
-            Some(pat) => {
-                let type_ascription = pat;
-                let typed = &pat.pat;
+        let pat_and_tys = &self.pat_and_tys;
+        let ty = self
+            .pat_and_tys
+            .iter()
+            .map(|pat_type| pat_type.pat.clone())
+            .collect::<Vec<Box<syn::Pat>>>();
 
-                quote! {
-                    #sig {
-                        #annotation
-                        fn #shim(
-                            db: &dyn #trait_name,
-                            _input: #input_struct_name,
-                            #type_ascription,
-                        ) #ret {
-                            #invoke(db, #typed)
-                        }
-                        #shim(self, #create_data_ident(self), #typed)
-                    }
+        let method = quote! {
+            #sig {
+                #annotation
+                fn #shim(
+                    db: &dyn #trait_name,
+                    _input: #input_struct_name,
+                    #(#pat_and_tys),*
+                ) #ret {
+                    #invoke(db, #(#ty),*)
                 }
-            }
-            None => {
-                quote! {
-                    #sig {
-                        #annotation
-                        fn #shim(
-                            db: &dyn #trait_name,
-                            _input: #input_struct_name
-                        ) #ret {
-                            #invoke(db)
-                        }
-                        #shim(self, #create_data_ident(self))
-                    }
-                }
+                #shim(self, #create_data_ident(self), #(#ty),*)
             }
         };
+        //     }
+        //     None => {
+        //         quote! {
+        //             #sig {
+        //                 #annotation
+        //                 fn #shim(
+        //                     db: &dyn #trait_name,
+        //                     _input: #input_struct_name
+        //                 ) #ret {
+        //                     #invoke(db)
+        //                 }
+        //                 #shim(self, #create_data_ident(self))
+        //             }
+        //         }
+        //     }
+        // };
 
         method.to_tokens(tokens);
     }
@@ -197,14 +199,19 @@ impl ToTokens for SetterKind {
 
 pub(crate) struct Transparent {
     pub(crate) signature: Signature,
-    pub(crate) typed: PatType,
+    pub(crate) pat_and_tys: Vec<PatType>,
     pub(crate) invoke: Option<Path>,
 }
 
 impl ToTokens for Transparent {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let sig = &self.signature;
-        let typed = &self.typed.pat;
+
+        let ty = self
+            .pat_and_tys
+            .iter()
+            .map(|pat_type| pat_type.pat.clone())
+            .collect::<Vec<Box<syn::Pat>>>();
 
         let invoke = match &self.invoke {
             Some(path) => path.to_token_stream(),
@@ -213,7 +220,7 @@ impl ToTokens for Transparent {
 
         let method = quote! {
             #sig {
-                #invoke(self, #typed)
+                #invoke(self, #(#ty),*)
             }
         };
 

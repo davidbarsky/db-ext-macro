@@ -153,21 +153,19 @@ pub(crate) fn query_group_impl(
 
                 let (_attrs, salsa_attrs) = filter_attrs(method.attrs);
 
-                let mut typed = None;
                 let mut query_kind = QueryKind::Tracked;
                 let mut invoke = None;
                 let mut cycle = None;
 
                 let params: Vec<FnArg> = signature.inputs.clone().into_iter().collect();
-
-                // we want first query, as we later replace the receiver with a `&dyn Db`
-                // in tracked functions.
-                match params.as_slice() {
-                    [] => return Err(syn::Error::new(signature.span(), "expected `&self`")),
-                    [FnArg::Receiver(_recv)] => {}
-                    [FnArg::Receiver(_recv), FnArg::Typed(ty)] => typed = Some(ty),
-                    _ => continue,
-                };
+                let pat_and_tys = params
+                    .into_iter()
+                    .filter(|fn_arg| matches!(fn_arg, FnArg::Typed(_)))
+                    .map(|fn_arg| match fn_arg {
+                        FnArg::Typed(pat_type) => pat_type.clone(),
+                        FnArg::Receiver(_) => unreachable!("this should have been filtered out"),
+                    })
+                    .collect::<Vec<syn::PatType>>();
 
                 let syn::ReturnType::Type(_, return_type) = &signature.output else {
                     return Err(syn::Error::new(signature.span(), "expected a return type"));
@@ -184,9 +182,9 @@ pub(crate) fn query_group_impl(
                         }
 
                         "input" => {
-                            if let Some(pat_type) = typed {
+                            if !pat_and_tys.is_empty() {
                                 return Err(syn::Error::new(
-                                    pat_type.span(),
+                                    span,
                                     "input methods cannot have a parameter",
                                 ));
                             }
@@ -242,7 +240,7 @@ pub(crate) fn query_group_impl(
                             trait_name: trait_name_ident.clone(),
                             input_struct_name: input_struct_name.clone(),
                             signature: signature.clone(),
-                            typed: typed.cloned(),
+                            pat_and_tys: pat_and_tys.clone(),
                             invoke: None,
                             cycle,
                             create_data_ident: create_data_ident.clone(),
@@ -256,7 +254,7 @@ pub(crate) fn query_group_impl(
                             trait_name: trait_name_ident.clone(),
                             input_struct_name: input_struct_name.clone(),
                             signature: signature.clone(),
-                            typed: typed.cloned(),
+                            pat_and_tys: pat_and_tys.clone(),
                             invoke: Some(invoke),
                             cycle,
                             create_data_ident: create_data_ident.clone(),
@@ -267,11 +265,7 @@ pub(crate) fn query_group_impl(
                     (QueryKind::Transparent, None) => {
                         let method = Transparent {
                             signature: method.sig.clone(),
-                            typed: typed
-                                .expect(
-                                    "query parameter was expected, but was not set. this is a bug (no invoke)",
-                                )
-                                .clone(),
+                            pat_and_tys: pat_and_tys.clone(),
                             invoke: None,
                         };
                         trait_methods.push(Queries::Transparent(method));
@@ -279,9 +273,7 @@ pub(crate) fn query_group_impl(
                     (QueryKind::Transparent, Some(invoke)) => {
                         let method = Transparent {
                             signature: method.sig.clone(),
-                            typed: typed
-                                .expect("query parameter expected, but was not set. this is a bug (invoke)")
-                                .clone(),
+                            pat_and_tys: pat_and_tys.clone(),
                             invoke: Some(invoke),
                         };
                         trait_methods.push(Queries::Transparent(method));

@@ -8,6 +8,7 @@ pub(crate) struct TrackedQuery {
     pub(crate) pat_and_tys: Vec<PatType>,
     pub(crate) invoke: Option<Path>,
     pub(crate) cycle: Option<Path>,
+    pub(crate) lru: bool,
     pub(crate) create_data_ident: Ident,
 }
 
@@ -28,7 +29,13 @@ impl ToTokens for TrackedQuery {
         let shim: Ident = format_ident!("{}_shim", fn_ident);
 
         let annotation = match &self.cycle {
-            Some(path) => quote!(#[salsa::tracked(recovery_fn=#path)]),
+            Some(path) => {
+                if self.lru {
+                    quote!(#[salsa::tracked(lru, recovery_fn=#path)])
+                } else {
+                    quote!(#[salsa::tracked(recovery_fn=#path)])
+                }
+            }
             None => quote!(#[salsa::tracked]),
         };
 
@@ -52,22 +59,6 @@ impl ToTokens for TrackedQuery {
                 #shim(self, #create_data_ident(self), #(#ty),*)
             }
         };
-        //     }
-        //     None => {
-        //         quote! {
-        //             #sig {
-        //                 #annotation
-        //                 fn #shim(
-        //                     db: &dyn #trait_name,
-        //                     _input: #input_struct_name
-        //                 ) #ret {
-        //                     #invoke(db)
-        //                 }
-        //                 #shim(self, #create_data_ident(self))
-        //             }
-        //         }
-        //     }
-        // };
 
         method.to_tokens(tokens);
     }

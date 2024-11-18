@@ -156,6 +156,7 @@ pub(crate) fn query_group_impl(
                 let mut query_kind = QueryKind::Tracked;
                 let mut invoke = None;
                 let mut cycle = None;
+                let mut lru = false;
 
                 let params: Vec<FnArg> = signature.inputs.clone().into_iter().collect();
                 let pat_and_tys = params
@@ -200,6 +201,9 @@ pub(crate) fn query_group_impl(
                             };
                             cycle = Some(path.0.clone())
                         }
+                        "lru" => {
+                            lru = true;
+                        }
                         _ => {
                             return Err(syn::Error::new(
                                 span.clone(),
@@ -243,6 +247,7 @@ pub(crate) fn query_group_impl(
                             pat_and_tys: pat_and_tys.clone(),
                             invoke: None,
                             cycle,
+                            lru,
                             create_data_ident: create_data_ident.clone(),
                         };
 
@@ -257,6 +262,7 @@ pub(crate) fn query_group_impl(
                             pat_and_tys: pat_and_tys.clone(),
                             invoke: Some(invoke),
                             cycle,
+                            lru,
                             create_data_ident: create_data_ident.clone(),
                         };
 

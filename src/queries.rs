@@ -220,10 +220,79 @@ impl ToTokens for Transparent {
         method.to_tokens(tokens);
     }
 }
+pub(crate) struct Intern {
+    pub(crate) signature: Signature,
+    pub(crate) pat_and_tys: Vec<PatType>,
+    pub(crate) return_ty: Path,
+}
+
+impl ToTokens for Intern {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let sig = &self.signature;
+
+        let ty = self
+            .pat_and_tys
+            .iter()
+            .map(|pat_type| pat_type.clone())
+            .collect::<Vec<syn::PatType>>();
+
+        let interned_key = &self.return_ty;
+        let struct_name = &interned_key
+            .segments
+            .last()
+            .expect("no identifier in the return value was found; this is a bug")
+            .ident;
+
+        let interned_pat = ty.iter().next().unwrap();
+        let interned_pat = &interned_pat.pat;
+
+        let method = quote! {
+            #sig {
+                #struct_name::new(self, #interned_pat)
+            }
+        };
+
+        method.to_tokens(tokens);
+    }
+}
+
+pub(crate) struct Lookup {
+    pub(crate) signature: Signature,
+    pub(crate) pat_and_tys: Vec<PatType>,
+    pub(crate) return_ty: Path,
+}
+
+impl ToTokens for Lookup {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let sig = &self.signature;
+
+        let ident = format_ident!("lookup_{}", sig.ident);
+
+        let ty = self
+            .pat_and_tys
+            .iter()
+            .map(|pat_type| pat_type.clone())
+            .collect::<Vec<syn::PatType>>();
+
+        let interned_key = &self.return_ty;
+
+        let interned_pat = ty.iter().next().unwrap();
+        let interned_return_ty = &interned_pat.ty;
+
+        let method = quote! {
+            fn #ident<'db>(&self, id: #interned_key) -> #interned_return_ty {
+                id.data(self)
+            }
+        };
+
+        method.to_tokens(tokens);
+    }
+}
 
 pub(crate) enum Queries {
     TrackedQuery(TrackedQuery),
     InputQuery(InputQuery),
+    Intern(Intern),
     Transparent(Transparent),
 }
 
@@ -233,6 +302,7 @@ impl ToTokens for Queries {
             Queries::TrackedQuery(tracked_query) => tracked_query.to_tokens(tokens),
             Queries::InputQuery(input_query) => input_query.to_tokens(tokens),
             Queries::Transparent(transparent) => transparent.to_tokens(tokens),
+            Queries::Intern(intern) => intern.to_tokens(tokens),
         }
     }
 }

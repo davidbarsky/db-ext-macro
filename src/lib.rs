@@ -3,8 +3,8 @@ use core::fmt;
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use queries::{
-    InputQuery, InputSetter, InputSetterWithDurability, Queries, SetterKind, TrackedQuery,
-    Transparent,
+    InputQuery, InputSetter, InputSetterWithDurability, Intern, Lookup, Queries, SetterKind,
+    TrackedQuery, Transparent,
 };
 use quote::{format_ident, quote, ToTokens};
 use syn::spanned::Spanned;
@@ -103,6 +103,7 @@ enum QueryKind {
     Input,
     Tracked,
     Transparent,
+    Interned,
 }
 
 pub(crate) fn query_group_impl(
@@ -128,6 +129,7 @@ pub(crate) fn query_group_impl(
     let mut input_struct_fields: Vec<InputStructField> = vec![];
     let mut trait_methods = vec![];
     let mut setter_trait_methods = vec![];
+    let mut lookup_methods: Vec<Lookup> = vec![];
 
     for item in item_trait.clone().items {
         match item {
@@ -135,21 +137,8 @@ pub(crate) fn query_group_impl(
                 let method_name = &method.sig.ident;
                 let signature = &method.sig.clone();
 
-                let return_type = signature.output.clone();
-                match return_type {
-                    syn::ReturnType::Default => continue,
-                    syn::ReturnType::Type(_, expr) => {
-                        let syn::Type::Path(ref expr) = *expr else {
-                            continue;
-                        };
-
-                        let field = InputStructField {
-                            name: method_name.to_token_stream(),
-                            ty: expr.path.to_token_stream(),
-                        };
-                        input_struct_fields.push(field);
-                    }
-                }
+                let return_sig = signature.output.clone();
+                let mut return_ty = None;
 
                 let (_attrs, salsa_attrs) = filter_attrs(method.attrs);
 
@@ -174,14 +163,13 @@ pub(crate) fn query_group_impl(
 
                 for SalsaAttr { name, tts, span } in salsa_attrs {
                     match name.as_str() {
-                        "invoke" => {
+                        "cycle" => {
                             let path = match syn::parse::<Parenthesized<Path>>(tts) {
                                 Ok(path) => path,
                                 Err(e) => return Err(e),
                             };
-                            invoke = Some(path.0.clone());
+                            cycle = Some(path.0.clone())
                         }
-
                         "input" => {
                             if !pat_and_tys.is_empty() {
                                 return Err(syn::Error::new(
@@ -191,24 +179,47 @@ pub(crate) fn query_group_impl(
                             }
                             query_kind = QueryKind::Input;
                         }
-                        "transparent" => {
-                            query_kind = QueryKind::Transparent;
+                        "interned" => {
+                            query_kind = QueryKind::Interned;
                         }
-                        "cycle" => {
+                        "invoke" => {
                             let path = match syn::parse::<Parenthesized<Path>>(tts) {
                                 Ok(path) => path,
                                 Err(e) => return Err(e),
                             };
-                            cycle = Some(path.0.clone())
+                            invoke = Some(path.0.clone());
                         }
                         "lru" => {
                             lru = true;
+                        }
+                        "transparent" => {
+                            query_kind = QueryKind::Transparent;
                         }
                         _ => {
                             return Err(syn::Error::new(
                                 span.clone(),
                                 format!("unknown attribute `{name}`"),
                             ))
+                        }
+                    }
+                }
+
+                match return_sig {
+                    syn::ReturnType::Default => continue,
+                    syn::ReturnType::Type(_, expr) => {
+                        let syn::Type::Path(ref expr) = *expr else {
+                            continue;
+                        };
+
+                        return_ty = Some(expr.path.clone());
+
+                        if matches!(query_kind, QueryKind::Input) {
+                            let field = InputStructField {
+                                name: method_name.to_token_stream(),
+                                ty: expr.path.to_token_stream(),
+                            };
+
+                            input_struct_fields.push(field);
                         }
                     }
                 }
@@ -237,6 +248,22 @@ pub(crate) fn query_group_impl(
                             create_data_ident: create_data_ident.clone(),
                         };
                         setter_trait_methods.push(SetterKind::WithDurability(setter));
+                    }
+                    (QueryKind::Interned, None) => {
+                        let method = Intern {
+                            signature: signature.clone(),
+                            pat_and_tys: pat_and_tys.clone(),
+                            return_ty: return_ty.clone().unwrap(),
+                        };
+
+                        trait_methods.push(Queries::Intern(method));
+
+                        let method = Lookup {
+                            signature: signature.clone(),
+                            pat_and_tys: pat_and_tys.clone(),
+                            return_ty: return_ty.unwrap(),
+                        };
+                        lookup_methods.push(method);
                     }
                     // tracked function without *any* invoke.
                     (QueryKind::Tracked, None) => {
@@ -284,10 +311,17 @@ pub(crate) fn query_group_impl(
                         };
                         trait_methods.push(Queries::Transparent(method));
                     }
+                    // error/invalid constructions
+                    (QueryKind::Interned, Some(path)) => {
+                        return Err(syn::Error::new(
+                            path.span(),
+                            format!("Interned queries cannot be used with an `#[invoke]`"),
+                        ))
+                    }
                     (QueryKind::Input, Some(path)) => {
                         return Err(syn::Error::new(
                             path.span(),
-                            format!("Inputs cannot have an `#[invoke]`"),
+                            format!("Inputs cannot be used with an `#[invoke]`"),
                         ))
                     }
                 }
@@ -353,6 +387,21 @@ pub(crate) fn query_group_impl(
         }
     };
 
+    let lookup_trait_ident = format_ident!("{}LookupExt", trait_name_ident);
+    let lookup_trait: ItemTrait = parse_quote! {
+        trait #lookup_trait_ident: #trait_name_ident {
+            #(#lookup_methods)*
+        }
+    };
+
+    let lookup_trait_impl = quote! {
+        impl<DB: ?Sized> #lookup_trait_ident for DB
+        where
+            DB: #trait_name_ident,
+        {
+        }
+    };
+
     let out = quote! {
         #item_trait
 
@@ -365,6 +414,10 @@ pub(crate) fn query_group_impl(
         #ext_trait
 
         #ext_trait_impl
+
+        #lookup_trait
+
+        #lookup_trait_impl
     }
     .into();
 

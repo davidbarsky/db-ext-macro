@@ -1,5 +1,4 @@
 use expect_test::expect;
-use salsa::Setter as _;
 
 mod logger_db;
 use logger_db::LoggerDb;

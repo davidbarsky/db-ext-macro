@@ -1,8 +1,6 @@
 use db_ext_macro::query_group;
 use expect_test::expect;
 
-use salsa::Setter;
-
 mod logger_db;
 use logger_db::LoggerDb;
 

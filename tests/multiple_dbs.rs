@@ -1,5 +1,4 @@
 use db_ext_macro::query_group;
-use salsa::Setter;
 
 #[query_group]
 pub trait DatabaseOne: salsa::Database {

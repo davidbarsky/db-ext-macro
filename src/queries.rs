@@ -117,6 +117,7 @@ impl ToTokens for InputSetter {
         let value = &value_argument.pat;
         let method = quote! {
             #sig {
+                use salsa::Setter;
                 let data = #create_data_ident(self);
                 data.#setter_ident(self).to(Some(#value));
             }
@@ -162,6 +163,7 @@ impl ToTokens for InputSetterWithDurability {
         let durability = &durability_argument.pat;
         let method = quote! {
             #sig {
+                use salsa::Setter;
                 let data = #create_data_ident(self);
                 data.#setter_ident(self)
                     .with_durability(#durability)

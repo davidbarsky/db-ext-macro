@@ -40,7 +40,7 @@ impl ToTokens for TrackedQuery {
         };
 
         let pat_and_tys = &self.pat_and_tys;
-        let ty = self
+        let params = self
             .pat_and_tys
             .iter()
             .map(|pat_type| pat_type.pat.clone())
@@ -54,9 +54,9 @@ impl ToTokens for TrackedQuery {
                     _input: #input_struct_name,
                     #(#pat_and_tys),*
                 ) #ret {
-                    #invoke(db, #(#ty),*)
+                    #invoke(db, #(#params),*)
                 }
-                #shim(self, #create_data_ident(self), #(#ty),*)
+                #shim(self, #create_data_ident(self), #(#params),*)
             }
         };
 

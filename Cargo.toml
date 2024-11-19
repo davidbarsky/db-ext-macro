@@ -12,7 +12,8 @@ proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "2.0.64", features = ["full", "visit-mut"] }
 synstructure = "0.13.1"
-salsa = { git = "https://github.com/salsa-rs/salsa.git" }
+# salsa = { git = "https://github.com/salsa-rs/salsa.git" }
+salsa = { path = "../salsa" }
 
 [dev-dependencies]
 expect-test = "1.5.0"

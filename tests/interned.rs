@@ -17,9 +17,6 @@ pub struct InternedString {
 
 #[query_group]
 pub trait InternedDB: salsa::Database {
-    #[db_ext_macro::input]
-    fn string(&self) -> String;
-
     #[db_ext_macro::interned]
     fn intern_string(&self, data: InternedString) -> InternedStringId<'_>;
 

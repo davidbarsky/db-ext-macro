@@ -282,6 +282,7 @@ checksum = "583034fd73374156e66797ed8e5b0d5690409c9226b22d87cb7f19821c05d152"
 [[package]]
 name = "salsa"
 version = "0.18.0"
+source = "git+https://github.com/davidbarsky/salsa.git?rev=c2ce00d51ab2468e9098b8da825192ef89061086#c2ce00d51ab2468e9098b8da825192ef89061086"
 dependencies = [
  "append-only-vec",
  "arc-swap",
@@ -301,10 +302,12 @@ dependencies = [
 [[package]]
 name = "salsa-macro-rules"
 version = "0.1.0"
+source = "git+https://github.com/davidbarsky/salsa.git?rev=c2ce00d51ab2468e9098b8da825192ef89061086#c2ce00d51ab2468e9098b8da825192ef89061086"
 
 [[package]]
 name = "salsa-macros"
 version = "0.18.0"
+source = "git+https://github.com/davidbarsky/salsa.git?rev=c2ce00d51ab2468e9098b8da825192ef89061086#c2ce00d51ab2468e9098b8da825192ef89061086"
 dependencies = [
  "heck",
  "proc-macro2",

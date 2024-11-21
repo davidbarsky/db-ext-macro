@@ -379,7 +379,7 @@ pub(crate) fn query_group_impl(
         }
     };
 
-    let ext_trait_impl = quote! {
+    let ext_trait_impl: syn::ItemImpl = parse_quote! {
         impl<DB> #ext_trait_ident for DB
         where
             DB: #trait_name_ident,
@@ -394,7 +394,7 @@ pub(crate) fn query_group_impl(
         }
     };
 
-    let lookup_trait_impl = quote! {
+    let lookup_trait_impl: syn::ItemImpl = parse_quote! {
         impl<DB: ?Sized> #lookup_trait_ident for DB
         where
             DB: #trait_name_ident,

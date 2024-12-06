@@ -4,39 +4,48 @@ use expect_test::expect;
 
 mod logger_db;
 use logger_db::LoggerDb;
+use salsa::plumbing::{AsId, FromId};
 
-#[salsa::interned]
-pub struct InternedStringId<'db> {
-    data: InternedString,
+#[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
+pub struct InternedStringId(salsa::Id);
+
+impl AsId for InternedStringId {
+    fn as_id(&self) -> salsa::Id {
+        self.0
+    }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug, Hash)]
+impl FromId for InternedStringId {
+    fn from_id(id: salsa::Id) -> Self {
+        InternedStringId(id)
+    }
+}
+
+#[salsa::interned_sans_lifetime(id = InternedStringId)]
 pub struct InternedString {
     data: String,
 }
 
 #[query_group]
 pub trait InternedDB: salsa::Database {
-    #[db_ext_macro::interned]
-    fn intern_string(&self, data: InternedString) -> InternedStringId<'_>;
+    #[db_ext_macro::interned(InternedString)]
+    fn intern_string(&self, data: String) -> InternedStringId;
 
-    fn interned_len<'db>(&self, id: InternedStringId<'db>) -> usize;
+    fn interned_len(&self, id: InternedStringId) -> usize;
 }
 
-fn interned_len<'db>(db: &dyn InternedDB, id: InternedStringId<'db>) -> usize {
-    db.lookup_intern_string(id).data.len()
+fn interned_len(db: &dyn InternedDB, id: InternedStringId) -> usize {
+    db.lookup_intern_string(id).len()
 }
 
 #[test]
 fn intern_round_trip() {
     let db = LoggerDb::default();
 
-    let id = db.intern_string(InternedString {
-        data: String::from("Hello, world!"),
-    });
+    let id = db.intern_string(String::from("Hello, world!"));
     let s = db.lookup_intern_string(id);
 
-    assert_eq!(s.data.len(), 13);
+    assert_eq!(s.len(), 13);
     db.assert_logs(expect![[r#"[]"#]]);
 }
 
@@ -44,9 +53,7 @@ fn intern_round_trip() {
 fn intern_with_query() {
     let db = LoggerDb::default();
 
-    let id = db.intern_string(InternedString {
-        data: String::from("Hello, world!"),
-    });
+    let id = db.intern_string(String::from("Hello, world!"));
     let len = db.interned_len(id);
 
     assert_eq!(len, 13);

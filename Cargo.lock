@@ -134,6 +134,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59f8e79d1fbf76bdfbde321e902714bf6c49df88a7dda6fc682fc2979226962d"
 
 [[package]]
+name = "either"
+version = "1.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
+
+[[package]]
 name = "equivalent"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -265,6 +271,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "rayon"
+version = "1.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b418a60154510ca1a002a752ca9714984e21e4241e804d32555251faf8b78ffa"
+dependencies = [
+ "either",
+ "rayon-core",
+]
+
+[[package]]
+name = "rayon-core"
+version = "1.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1465873a3dfdaa8ae7cb14b4383657caab0b3e8a0aa9ae8e04b044854c8dfce2"
+dependencies = [
+ "crossbeam-deque",
+ "crossbeam-utils",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -282,7 +308,7 @@ checksum = "583034fd73374156e66797ed8e5b0d5690409c9226b22d87cb7f19821c05d152"
 [[package]]
 name = "salsa"
 version = "0.18.0"
-source = "git+https://github.com/davidbarsky/salsa.git?rev=c2ce00d51ab2468e9098b8da825192ef89061086#c2ce00d51ab2468e9098b8da825192ef89061086"
+source = "git+https://github.com/davidbarsky/salsa.git?rev=d609b9ba7c61a1ed7c09142fa5ded6e0ceddb174#d609b9ba7c61a1ed7c09142fa5ded6e0ceddb174"
 dependencies = [
  "append-only-vec",
  "arc-swap",
@@ -292,6 +318,7 @@ dependencies = [
  "indexmap",
  "lazy_static",
  "parking_lot",
+ "rayon",
  "rustc-hash",
  "salsa-macro-rules",
  "salsa-macros",
@@ -302,12 +329,12 @@ dependencies = [
 [[package]]
 name = "salsa-macro-rules"
 version = "0.1.0"
-source = "git+https://github.com/davidbarsky/salsa.git?rev=c2ce00d51ab2468e9098b8da825192ef89061086#c2ce00d51ab2468e9098b8da825192ef89061086"
+source = "git+https://github.com/davidbarsky/salsa.git?rev=d609b9ba7c61a1ed7c09142fa5ded6e0ceddb174#d609b9ba7c61a1ed7c09142fa5ded6e0ceddb174"
 
 [[package]]
 name = "salsa-macros"
 version = "0.18.0"
-source = "git+https://github.com/davidbarsky/salsa.git?rev=c2ce00d51ab2468e9098b8da825192ef89061086#c2ce00d51ab2468e9098b8da825192ef89061086"
+source = "git+https://github.com/davidbarsky/salsa.git?rev=d609b9ba7c61a1ed7c09142fa5ded6e0ceddb174#d609b9ba7c61a1ed7c09142fa5ded6e0ceddb174"
 dependencies = [
  "heck",
  "proc-macro2",

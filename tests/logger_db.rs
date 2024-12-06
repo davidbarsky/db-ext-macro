@@ -1,13 +1,15 @@
+use std::sync::{Arc, Mutex};
+
 #[salsa::db]
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct LoggerDb {
     storage: salsa::Storage<Self>,
     logger: Logger,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Logger {
-    logs: std::sync::Mutex<Vec<String>>,
+    logs: Arc<Mutex<Vec<String>>>,
 }
 
 #[salsa::db]

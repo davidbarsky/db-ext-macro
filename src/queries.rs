@@ -1,10 +1,10 @@
 use quote::{format_ident, quote, ToTokens};
-use syn::{parse_quote, FnArg, Ident, PatType, Path, Receiver, ReturnType, Signature};
+use syn::{parse_quote, FnArg, Ident, PatType, Path, Receiver, ReturnType};
 
 pub(crate) struct TrackedQuery {
     pub(crate) trait_name: Ident,
     pub(crate) input_struct_name: Ident,
-    pub(crate) signature: Signature,
+    pub(crate) signature: syn::Signature,
     pub(crate) pat_and_tys: Vec<PatType>,
     pub(crate) invoke: Option<Path>,
     pub(crate) cycle: Option<Path>,
@@ -65,7 +65,7 @@ impl ToTokens for TrackedQuery {
 }
 
 pub(crate) struct InputQuery {
-    pub(crate) signature: Signature,
+    pub(crate) signature: syn::Signature,
     pub(crate) create_data_ident: Ident,
 }
 
@@ -86,8 +86,8 @@ impl ToTokens for InputQuery {
 }
 
 pub(crate) struct InputSetter {
-    pub(crate) signature: Signature,
-    pub(crate) return_type: syn::Type,
+    pub(crate) signature: syn::Signature,
+    pub(crate) return_type: syn::Path,
     pub(crate) create_data_ident: Ident,
 }
 
@@ -127,8 +127,8 @@ impl ToTokens for InputSetter {
 }
 
 pub(crate) struct InputSetterWithDurability {
-    pub(crate) signature: Signature,
-    pub(crate) return_type: syn::Type,
+    pub(crate) signature: syn::Signature,
+    pub(crate) return_type: syn::Path,
     pub(crate) create_data_ident: Ident,
 }
 
@@ -191,7 +191,7 @@ impl ToTokens for SetterKind {
 }
 
 pub(crate) struct Transparent {
-    pub(crate) signature: Signature,
+    pub(crate) signature: syn::Signature,
     pub(crate) pat_and_tys: Vec<PatType>,
     pub(crate) invoke: Option<Path>,
 }
@@ -221,9 +221,9 @@ impl ToTokens for Transparent {
     }
 }
 pub(crate) struct Intern {
-    pub(crate) signature: Signature,
+    pub(crate) signature: syn::Signature,
     pub(crate) pat_and_tys: Vec<PatType>,
-    pub(crate) return_ty: Path,
+    pub(crate) interned_struct_path: Path,
 }
 
 impl ToTokens for Intern {
@@ -236,19 +236,14 @@ impl ToTokens for Intern {
             .map(|pat_type| pat_type.clone())
             .collect::<Vec<syn::PatType>>();
 
-        let interned_key = &self.return_ty;
-        let struct_name = &interned_key
-            .segments
-            .last()
-            .expect("no identifier in the return value was found; this is a bug")
-            .ident;
-
         let interned_pat = ty.iter().next().unwrap();
         let interned_pat = &interned_pat.pat;
 
+        let wrapper_struct = self.interned_struct_path.to_token_stream();
+
         let method = quote! {
             #sig {
-                #struct_name::new(self, #interned_pat)
+                #wrapper_struct::new(self, #interned_pat).0
             }
         };
 
@@ -257,13 +252,14 @@ impl ToTokens for Intern {
 }
 
 pub(crate) struct Lookup {
-    pub(crate) signature: Signature,
+    pub(crate) signature: syn::Signature,
     pub(crate) pat_and_tys: Vec<PatType>,
     pub(crate) return_ty: Path,
+    pub(crate) interned_struct_path: Path,
 }
 
-impl ToTokens for Lookup {
-    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+impl Lookup {
+    pub(crate) fn prepare_signature(&mut self) {
         let sig = &self.signature;
 
         let ident = format_ident!("lookup_{}", sig.ident);
@@ -279,9 +275,20 @@ impl ToTokens for Lookup {
         let interned_pat = ty.iter().next().unwrap();
         let interned_return_ty = &interned_pat.ty;
 
+        self.signature = parse_quote!(
+            fn #ident(&self, id: #interned_key) -> #interned_return_ty
+        );
+    }
+}
+
+impl ToTokens for Lookup {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let sig = &self.signature;
+
+        let wrapper_struct = self.interned_struct_path.to_token_stream();
         let method = quote! {
-            fn #ident<'db>(&self, id: #interned_key) -> #interned_return_ty {
-                id.data(self)
+            #sig {
+                #wrapper_struct::ingredient(self).data(self.as_dyn_database(), id.as_id()).0.clone()
             }
         };
 

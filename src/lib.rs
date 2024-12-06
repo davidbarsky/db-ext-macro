@@ -1,4 +1,5 @@
 use core::fmt;
+use std::vec;
 
 use proc_macro::TokenStream;
 use proc_macro2::Span;
@@ -9,8 +10,7 @@ use queries::{
 use quote::{format_ident, quote, ToTokens};
 use syn::spanned::Spanned;
 use syn::visit_mut::VisitMut;
-use syn::{parse_quote, Attribute, FnArg, Path};
-use syn::{ItemTrait, TraitItem};
+use syn::{parse_quote, Attribute, FnArg, ItemTrait, Path, TraitItem, TraitItemFn};
 
 mod queries;
 
@@ -129,7 +129,8 @@ pub(crate) fn query_group_impl(
     let mut input_struct_fields: Vec<InputStructField> = vec![];
     let mut trait_methods = vec![];
     let mut setter_trait_methods = vec![];
-    let mut lookup_methods: Vec<Lookup> = vec![];
+    let mut lookup_signatures = vec![];
+    let mut lookup_methods = vec![];
 
     for item in item_trait.clone().items {
         match item {
@@ -138,13 +139,13 @@ pub(crate) fn query_group_impl(
                 let signature = &method.sig.clone();
 
                 let return_sig = signature.output.clone();
-                let mut return_ty = None;
 
                 let (_attrs, salsa_attrs) = filter_attrs(method.attrs);
 
                 let mut query_kind = QueryKind::Tracked;
                 let mut invoke = None;
                 let mut cycle = None;
+                let mut interned_struct_path = None;
                 let mut lru = false;
 
                 let params: Vec<FnArg> = signature.inputs.clone().into_iter().collect();
@@ -157,9 +158,9 @@ pub(crate) fn query_group_impl(
                     })
                     .collect::<Vec<syn::PatType>>();
 
-                let syn::ReturnType::Type(_, return_type) = &signature.output else {
-                    return Err(syn::Error::new(signature.span(), "expected a return type"));
-                };
+                // let syn::ReturnType::Type(_, return_type) = &signature.output else {
+                //     return Err(syn::Error::new(signature.span(), "expected a return type"));
+                // };
 
                 for SalsaAttr { name, tts, span } in salsa_attrs {
                     match name.as_str() {
@@ -180,6 +181,11 @@ pub(crate) fn query_group_impl(
                             query_kind = QueryKind::Input;
                         }
                         "interned" => {
+                            let path = match syn::parse::<Parenthesized<Path>>(tts) {
+                                Ok(path) => path,
+                                Err(e) => return Err(e),
+                            };
+                            interned_struct_path = Some(path.0);
                             query_kind = QueryKind::Interned;
                         }
                         "invoke" => {
@@ -204,6 +210,7 @@ pub(crate) fn query_group_impl(
                     }
                 }
 
+                let mut return_ty = None;
                 match return_sig {
                     syn::ReturnType::Default => continue,
                     syn::ReturnType::Type(_, expr) => {
@@ -236,33 +243,38 @@ pub(crate) fn query_group_impl(
 
                         let setter = InputSetter {
                             signature: method.sig.clone(),
-                            return_type: *return_type.clone(),
+                            return_type: return_ty.as_ref().unwrap().clone(),
                             create_data_ident: create_data_ident.clone(),
                         };
-
                         setter_trait_methods.push(SetterKind::Plain(setter));
 
                         let setter = InputSetterWithDurability {
                             signature: method.sig.clone(),
-                            return_type: *return_type.clone(),
+                            return_type: return_ty.unwrap().clone(),
                             create_data_ident: create_data_ident.clone(),
                         };
                         setter_trait_methods.push(SetterKind::WithDurability(setter));
                     }
                     (QueryKind::Interned, None) => {
+                        let interned_struct_path = interned_struct_path.unwrap();
                         let method = Intern {
                             signature: signature.clone(),
                             pat_and_tys: pat_and_tys.clone(),
-                            return_ty: return_ty.clone().unwrap(),
+                            interned_struct_path: interned_struct_path.clone(),
                         };
 
                         trait_methods.push(Queries::Intern(method));
 
-                        let method = Lookup {
+                        let mut method = Lookup {
                             signature: signature.clone(),
                             pat_and_tys: pat_and_tys.clone(),
                             return_ty: return_ty.unwrap(),
+                            interned_struct_path,
                         };
+                        method.prepare_signature();
+
+                        lookup_signatures
+                            .push(TraitItem::Fn(make_trait_method(method.signature.clone())));
                         lookup_methods.push(method);
                     }
                     // tracked function without *any* invoke.
@@ -358,6 +370,24 @@ pub(crate) fn query_group_impl(
         }
     };
 
+    let mut setter_signatures = vec![];
+    let mut setter_methods = vec![];
+    for trait_item in setter_trait_methods
+        .iter()
+        .map(|method| method.to_token_stream())
+        .map(|tokens| syn::parse2::<syn::TraitItemFn>(tokens).unwrap())
+    {
+        let mut methods_sans_body = trait_item.clone();
+        methods_sans_body.default = None;
+        methods_sans_body.semi_token = Some(syn::Token![;](trait_item.span()));
+
+        setter_signatures.push(TraitItem::Fn(methods_sans_body));
+        setter_methods.push(TraitItem::Fn(trait_item));
+    }
+
+    item_trait.items.append(&mut setter_signatures);
+    item_trait.items.append(&mut lookup_signatures);
+
     let trait_impl = quote! {
         #[salsa::db]
         impl<DB> #trait_name_ident for DB
@@ -365,42 +395,13 @@ pub(crate) fn query_group_impl(
             DB: #supertraits,
         {
             #(#trait_methods)*
-        }
-    };
-    RemoveAttrsFromTraitMethods.visit_item_trait_mut(&mut item_trait);
 
-    let ext_trait_ident = format_ident!("{}SetterExt", trait_name_ident);
-    let ext_trait: ItemTrait = parse_quote! {
-        trait #ext_trait_ident: #trait_name_ident
-        where
-            Self: Sized,
-        {
-            #(#setter_trait_methods)*
-        }
-    };
+            #(#setter_methods)*
 
-    let ext_trait_impl: syn::ItemImpl = parse_quote! {
-        impl<DB> #ext_trait_ident for DB
-        where
-            DB: #trait_name_ident,
-        {
-        }
-    };
-
-    let lookup_trait_ident = format_ident!("{}LookupExt", trait_name_ident);
-    let lookup_trait: ItemTrait = parse_quote! {
-        trait #lookup_trait_ident: #trait_name_ident {
             #(#lookup_methods)*
         }
     };
-
-    let lookup_trait_impl: syn::ItemImpl = parse_quote! {
-        impl<DB: ?Sized> #lookup_trait_ident for DB
-        where
-            DB: #trait_name_ident,
-        {
-        }
-    };
+    RemoveAttrsFromTraitMethods.visit_item_trait_mut(&mut item_trait);
 
     let out = quote! {
         #item_trait
@@ -410,14 +411,6 @@ pub(crate) fn query_group_impl(
         #input_struct
 
         #create_data_method
-
-        #ext_trait
-
-        #ext_trait_impl
-
-        #lookup_trait
-
-        #lookup_trait_impl
     }
     .into();
 
@@ -435,6 +428,15 @@ where
         let content;
         syn::parenthesized!(content in input);
         content.parse::<T>().map(Parenthesized)
+    }
+}
+
+fn make_trait_method(sig: syn::Signature) -> TraitItemFn {
+    TraitItemFn {
+        attrs: vec![],
+        sig: sig.clone(),
+        semi_token: Some(syn::Token![;](sig.span())),
+        default: None,
     }
 }
 

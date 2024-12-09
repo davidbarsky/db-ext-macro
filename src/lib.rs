@@ -354,7 +354,7 @@ pub(crate) fn query_group_impl(
 
     let input_struct = quote! {
         #[salsa::input]
-        struct #input_struct_name {
+        pub(crate) struct #input_struct_name {
             #(#fields),*
         }
     };

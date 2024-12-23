@@ -1,5 +1,5 @@
 use quote::{format_ident, quote, ToTokens};
-use syn::{parse_quote, FnArg, Ident, PatType, Path, Receiver, ReturnType};
+use syn::{parse_quote, FnArg, Ident, PatType, Path, Receiver, ReturnType, Type};
 
 pub(crate) struct TrackedQuery {
     pub(crate) trait_name: Ident,
@@ -87,7 +87,7 @@ impl ToTokens for InputQuery {
 
 pub(crate) struct InputSetter {
     pub(crate) signature: syn::Signature,
-    pub(crate) return_type: syn::Path,
+    pub(crate) return_type: syn::Type,
     pub(crate) create_data_ident: Ident,
 }
 
@@ -128,7 +128,7 @@ impl ToTokens for InputSetter {
 
 pub(crate) struct InputSetterWithDurability {
     pub(crate) signature: syn::Signature,
-    pub(crate) return_type: syn::Path,
+    pub(crate) return_type: syn::Type,
     pub(crate) create_data_ident: Ident,
 }
 
@@ -254,7 +254,7 @@ impl ToTokens for Intern {
 pub(crate) struct Lookup {
     pub(crate) signature: syn::Signature,
     pub(crate) pat_and_tys: Vec<PatType>,
-    pub(crate) return_ty: Path,
+    pub(crate) return_ty: Type,
     pub(crate) interned_struct_path: Path,
 }
 

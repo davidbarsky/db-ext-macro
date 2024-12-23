@@ -138,8 +138,6 @@ pub(crate) fn query_group_impl(
                 let method_name = &method.sig.ident;
                 let signature = &method.sig.clone();
 
-                let return_sig = signature.output.clone();
-
                 let (_attrs, salsa_attrs) = filter_attrs(method.attrs);
 
                 let mut query_kind = QueryKind::Tracked;
@@ -157,10 +155,6 @@ pub(crate) fn query_group_impl(
                         FnArg::Receiver(_) => unreachable!("this should have been filtered out"),
                     })
                     .collect::<Vec<syn::PatType>>();
-
-                // let syn::ReturnType::Type(_, return_type) = &signature.output else {
-                //     return Err(syn::Error::new(signature.span(), "expected a return type"));
-                // };
 
                 for SalsaAttr { name, tts, span } in salsa_attrs {
                     match name.as_str() {
@@ -210,24 +204,21 @@ pub(crate) fn query_group_impl(
                     }
                 }
 
-                let mut return_ty = None;
-                match return_sig {
-                    syn::ReturnType::Default => continue,
-                    syn::ReturnType::Type(_, expr) => {
-                        let syn::Type::Path(ref expr) = *expr else {
-                            continue;
+                let syn::ReturnType::Type(_, return_ty) = signature.output.clone() else {
+                    return Err(syn::Error::new(
+                        signature.span(),
+                        "Queries must have a return type",
+                    ));
+                };
+
+                if let syn::Type::Path(ref ty_path) = *return_ty {
+                    if matches!(query_kind, QueryKind::Input) {
+                        let field = InputStructField {
+                            name: method_name.to_token_stream(),
+                            ty: ty_path.path.to_token_stream(),
                         };
 
-                        return_ty = Some(expr.path.clone());
-
-                        if matches!(query_kind, QueryKind::Input) {
-                            let field = InputStructField {
-                                name: method_name.to_token_stream(),
-                                ty: expr.path.to_token_stream(),
-                            };
-
-                            input_struct_fields.push(field);
-                        }
+                        input_struct_fields.push(field);
                     }
                 }
 
@@ -243,14 +234,14 @@ pub(crate) fn query_group_impl(
 
                         let setter = InputSetter {
                             signature: method.sig.clone(),
-                            return_type: return_ty.as_ref().unwrap().clone(),
+                            return_type: *return_ty.clone(),
                             create_data_ident: create_data_ident.clone(),
                         };
                         setter_trait_methods.push(SetterKind::Plain(setter));
 
                         let setter = InputSetterWithDurability {
                             signature: method.sig.clone(),
-                            return_type: return_ty.unwrap().clone(),
+                            return_type: *return_ty.clone(),
                             create_data_ident: create_data_ident.clone(),
                         };
                         setter_trait_methods.push(SetterKind::WithDurability(setter));
@@ -268,7 +259,7 @@ pub(crate) fn query_group_impl(
                         let mut method = Lookup {
                             signature: signature.clone(),
                             pat_and_tys: pat_and_tys.clone(),
-                            return_ty: return_ty.unwrap(),
+                            return_ty: *return_ty,
                             interned_struct_path,
                         };
                         method.prepare_signature();

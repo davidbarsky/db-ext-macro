@@ -144,7 +144,7 @@ pub(crate) fn query_group_impl(
                 let mut invoke = None;
                 let mut cycle = None;
                 let mut interned_struct_path = None;
-                let mut lru = false;
+                let mut lru = None;
 
                 let params: Vec<FnArg> = signature.inputs.clone().into_iter().collect();
                 let pat_and_tys = params
@@ -198,7 +198,13 @@ pub(crate) fn query_group_impl(
                             query_kind = QueryKind::TrackedWithSalsaStruct;
                         }
                         "lru" => {
-                            lru = true;
+                            let lru_count = match syn::parse::<Parenthesized<syn::LitInt>>(tts) {
+                                Ok(path) => path,
+                                Err(e) => return Err(e),
+                            };
+                            let value = lru_count.0.base10_parse::<u32>()?;
+
+                            lru = Some(value);
                         }
                         "transparent" => {
                             query_kind = QueryKind::Transparent;

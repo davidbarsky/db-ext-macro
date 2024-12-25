@@ -9,10 +9,10 @@ pub trait LruDB: salsa::Database {
     #[db_ext_macro::input]
     fn input_string(&self) -> String;
 
-    #[db_ext_macro::lru]
+    #[db_ext_macro::lru(16)]
     fn length_query(&self, key: ()) -> usize;
 
-    #[db_ext_macro::lru]
+    #[db_ext_macro::lru(16)]
     #[db_ext_macro::invoke(invoked_query)]
     fn length_query_invoke(&self, key: ()) -> usize;
 }

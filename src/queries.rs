@@ -7,7 +7,7 @@ pub(crate) struct TrackedQuery {
     pub(crate) pat_and_tys: Vec<PatType>,
     pub(crate) invoke: Option<Path>,
     pub(crate) cycle: Option<Path>,
-    pub(crate) lru: bool,
+    pub(crate) lru: Option<u32>,
     pub(crate) generated_struct: Option<GeneratedInputStruct>,
 }
 
@@ -33,8 +33,8 @@ impl ToTokens for TrackedQuery {
 
         let annotation = match &self.cycle {
             Some(path) => {
-                if self.lru {
-                    quote!(#[salsa::tracked(lru, recovery_fn=#path)])
+                if let Some(lru_count) = &self.lru {
+                    quote!(#[salsa::tracked(lru = #lru_count, recovery_fn=#path)])
                 } else {
                     quote!(#[salsa::tracked(recovery_fn=#path)])
                 }

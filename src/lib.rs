@@ -4,8 +4,7 @@ use std::vec;
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use queries::{
-    InputQuery, InputSetter, InputSetterWithDurability, Intern, Lookup, Queries, SetterKind,
-    TrackedQuery, Transparent,
+    GeneratedInputStruct, InputQuery, InputSetter, InputSetterWithDurability, Intern, Lookup, Queries, SetterKind, TrackedQuery, Transparent
 };
 use quote::{format_ident, quote, ToTokens};
 use syn::spanned::Spanned;
@@ -102,6 +101,7 @@ fn filter_attrs(attrs: Vec<Attribute>) -> (Vec<Attribute>, Vec<SalsaAttr>) {
 enum QueryKind {
     Input,
     Tracked,
+    TrackedWithSalsaStruct,
     Transparent,
     Interned,
 }
@@ -189,6 +189,14 @@ pub(crate) fn query_group_impl(
                             };
                             invoke = Some(path.0.clone());
                         }
+                        "invoke_actual" => {
+                            let path = match syn::parse::<Parenthesized<Path>>(tts) {
+                                Ok(path) => path,
+                                Err(e) => return Err(e),
+                            };
+                            invoke = Some(path.0.clone());
+                            query_kind = QueryKind::TrackedWithSalsaStruct;
+                        }
                         "lru" => {
                             lru = true;
                         }
@@ -272,13 +280,15 @@ pub(crate) fn query_group_impl(
                     (QueryKind::Tracked, None) => {
                         let method = TrackedQuery {
                             trait_name: trait_name_ident.clone(),
-                            input_struct_name: input_struct_name.clone(),
+                            generated_struct: Some(GeneratedInputStruct {
+                                input_struct_name: input_struct_name.clone(),
+                                create_data_ident: create_data_ident.clone(),
+                            }),
                             signature: signature.clone(),
                             pat_and_tys: pat_and_tys.clone(),
                             invoke: None,
                             cycle,
                             lru,
-                            create_data_ident: create_data_ident.clone(),
                         };
 
                         trait_methods.push(Queries::TrackedQuery(method));
@@ -287,17 +297,33 @@ pub(crate) fn query_group_impl(
                     (QueryKind::Tracked, Some(invoke)) => {
                         let method = TrackedQuery {
                             trait_name: trait_name_ident.clone(),
-                            input_struct_name: input_struct_name.clone(),
+                            generated_struct: Some(GeneratedInputStruct {
+                                input_struct_name: input_struct_name.clone(),
+                                create_data_ident: create_data_ident.clone(),
+                            }),
                             signature: signature.clone(),
                             pat_and_tys: pat_and_tys.clone(),
                             invoke: Some(invoke),
                             cycle,
                             lru,
-                            create_data_ident: create_data_ident.clone(),
                         };
 
                         trait_methods.push(Queries::TrackedQuery(method))
                     }
+                    (QueryKind::TrackedWithSalsaStruct, Some(invoke)) => {
+                        let method = TrackedQuery {
+                            trait_name: trait_name_ident.clone(),
+                            generated_struct: None,
+                            signature: signature.clone(),
+                            pat_and_tys: pat_and_tys.clone(),
+                            invoke: Some(invoke),
+                            cycle,
+                            lru,
+                        };
+
+                        trait_methods.push(Queries::TrackedQuery(method))
+                    }
+                    (QueryKind::TrackedWithSalsaStruct, None) =>unreachable!(),
                     (QueryKind::Transparent, None) => {
                         let method = Transparent {
                             signature: method.sig.clone(),

@@ -4,7 +4,8 @@ use std::vec;
 use proc_macro::TokenStream;
 use proc_macro2::Span;
 use queries::{
-    GeneratedInputStruct, InputQuery, InputSetter, InputSetterWithDurability, Intern, Lookup, Queries, SetterKind, TrackedQuery, Transparent
+    GeneratedInputStruct, InputQuery, InputSetter, InputSetterWithDurability, Intern, Lookup,
+    Queries, SetterKind, TrackedQuery, Transparent,
 };
 use quote::{format_ident, quote, ToTokens};
 use syn::spanned::Spanned;
@@ -175,11 +176,19 @@ pub(crate) fn query_group_impl(
                             query_kind = QueryKind::Input;
                         }
                         "interned" => {
-                            let path = match syn::parse::<Parenthesized<Path>>(tts) {
-                                Ok(path) => path,
-                                Err(e) => return Err(e),
+                            let syn::ReturnType::Type(_, ty) = &signature.output else {
+                                return Err(syn::Error::new(
+                                    span,
+                                    "interned queries must have return type",
+                                ));
                             };
-                            interned_struct_path = Some(path.0);
+                            let syn::Type::Path(path) = &**ty else {
+                                return Err(syn::Error::new(
+                                    span,
+                                    "interned queries must have return type",
+                                ));
+                            };
+                            interned_struct_path = Some(path.path.clone());
                             query_kind = QueryKind::Interned;
                         }
                         "invoke" => {
@@ -329,7 +338,7 @@ pub(crate) fn query_group_impl(
 
                         trait_methods.push(Queries::TrackedQuery(method))
                     }
-                    (QueryKind::TrackedWithSalsaStruct, None) =>unreachable!(),
+                    (QueryKind::TrackedWithSalsaStruct, None) => unreachable!(),
                     (QueryKind::Transparent, None) => {
                         let method = Transparent {
                             signature: method.sig.clone(),

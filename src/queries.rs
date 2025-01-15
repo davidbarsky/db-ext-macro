@@ -263,7 +263,7 @@ impl ToTokens for Intern {
 
         let method = quote! {
             #sig {
-                #wrapper_struct::new(self, #interned_pat).0
+                #wrapper_struct::new(self, #interned_pat)
             }
         };
 

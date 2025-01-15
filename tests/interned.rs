@@ -28,7 +28,7 @@ pub struct InternedString {
 
 #[query_group]
 pub trait InternedDB: salsa::Database {
-    #[db_ext_macro::interned(InternedString)]
+    #[db_ext_macro::interned]
     fn intern_string(&self, data: String) -> InternedStringId;
 
     fn interned_len(&self, id: InternedStringId) -> usize;

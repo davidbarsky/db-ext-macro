@@ -31,15 +31,11 @@ impl ToTokens for TrackedQuery {
         let fn_ident = &sig.ident;
         let shim: Ident = format_ident!("{}_shim", fn_ident);
 
-        let annotation = match &self.cycle {
-            Some(path) => {
-                if let Some(lru_count) = &self.lru {
-                    quote!(#[salsa::tracked(lru = #lru_count, recovery_fn=#path)])
-                } else {
-                    quote!(#[salsa::tracked(recovery_fn=#path)])
-                }
-            }
-            None => quote!(#[salsa::tracked]),
+        let annotation = match (self.cycle.clone(), self.lru) {
+            (Some(cycle), Some(lru)) => quote!(#[salsa::tracked(lru = #lru, recovery_fn = #cycle)]),
+            (Some(cycle), None) => quote!(#[salsa::tracked(recovery_fn = #cycle)]),
+            (None, Some(lru)) => quote!(#[salsa::tracked(lru = #lru)]),
+            (None, None) => quote!(#[salsa::tracked]),
         };
 
         let pat_and_tys = &self.pat_and_tys;

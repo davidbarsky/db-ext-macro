@@ -1,8 +1,8 @@
-use db_ext_macro::query_group;
+use query_group::query_group;
 
 #[query_group]
 pub trait DatabaseOne: salsa::Database {
-    #[db_ext_macro::input]
+    #[salsa::input]
     fn input_string(&self) -> String;
 
     // unadorned query

@@ -2,18 +2,19 @@ use expect_test::expect;
 
 mod logger_db;
 use logger_db::LoggerDb;
+use query_group::query_group;
 
-#[db_ext_macro::query_group]
+#[query_group]
 pub trait LruDB: salsa::Database {
     // // input with no params
-    #[db_ext_macro::input]
+    #[salsa::input]
     fn input_string(&self) -> String;
 
-    #[db_ext_macro::lru(16)]
+    #[salsa::lru(16)]
     fn length_query(&self, key: ()) -> usize;
 
-    #[db_ext_macro::lru(16)]
-    #[db_ext_macro::invoke(invoked_query)]
+    #[salsa::lru(16)]
+    #[salsa::invoke(invoked_query)]
     fn length_query_invoke(&self, key: ()) -> usize;
 }
 

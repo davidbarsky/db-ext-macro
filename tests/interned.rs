@@ -1,4 +1,4 @@
-use db_ext_macro::query_group;
+use query_group::query_group;
 
 use expect_test::expect;
 
@@ -28,7 +28,7 @@ pub struct InternedString {
 
 #[query_group]
 pub trait InternedDB: salsa::Database {
-    #[db_ext_macro::interned]
+    #[salsa::interned]
     fn intern_string(&self, data: String) -> InternedStringId;
 
     fn interned_len(&self, id: InternedStringId) -> usize;

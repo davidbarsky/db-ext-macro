@@ -1,17 +1,17 @@
-use db_ext_macro::query_group;
+use query_group::query_group;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Error;
 
 #[query_group]
 pub trait ResultDatabase: salsa::Database {
-    #[db_ext_macro::input]
+    #[salsa::input]
     fn input_string(&self) -> String;
 
     // unadorned query
     fn length(&self, key: ()) -> Result<usize, Error>;
 
-    #[db_ext_macro::cycle(recover)]
+    #[salsa::cycle(recover)]
     fn length2(&self, key: ()) -> Result<usize, Error>;
 }
 

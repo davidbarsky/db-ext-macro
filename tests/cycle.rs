@@ -1,6 +1,6 @@
 use std::panic::UnwindSafe;
 
-use db_ext_macro::query_group;
+use query_group::query_group;
 use expect_test::expect;
 use salsa::Setter;
 
@@ -84,10 +84,10 @@ struct Error {
 
 #[query_group]
 trait CycleDatabase: salsa::Database {
-    #[db_ext_macro::cycle(recover_a)]
+    #[salsa::cycle(recover_a)]
     fn cycle_a(&self, abc: ABC) -> Result<(), Error>;
 
-    #[db_ext_macro::cycle(recover_b)]
+    #[salsa::cycle(recover_b)]
     fn cycle_b(&self, abc: ABC) -> Result<(), Error>;
 
     fn cycle_c(&self, abc: ABC) -> Result<(), Error>;

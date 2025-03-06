@@ -1,4 +1,4 @@
-#[db_ext_macro::query_group]
+#[query_group::query_group]
 pub trait ArityDb: salsa::Database {
     fn one(&self, a: ()) -> String;
 

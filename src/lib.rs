@@ -77,25 +77,24 @@ impl TryFrom<syn::Attribute> for SalsaAttr {
 fn is_not_salsa_attr_path(path: &syn::Path) -> bool {
     path.segments
         .first()
-        .map(|s| s.ident != "db_ext_macro")
+        .map(|s| s.ident != "salsa")
         .unwrap_or(true)
         || path.segments.len() != 2
 }
 
 fn filter_attrs(attrs: Vec<Attribute>) -> (Vec<Attribute>, Vec<SalsaAttr>) {
     let mut other = vec![];
-    let mut ra_salsa = vec![];
-    // Leave non-ra_salsa attributes untouched. These are
-    // attributes that don't start with `ra_salsa::` or don't have
+    let mut salsa = vec![];
+    // Leave non-salsa attributes untouched. These are
+    // attributes that don't start with `salsa::` or don't have
     // exactly two segments in their path.
-    // Keep the ra_salsa attributes around.
     for attr in attrs {
         match SalsaAttr::try_from(attr) {
-            Ok(it) => ra_salsa.push(it),
+            Ok(it) => salsa.push(it),
             Err(it) => other.push(it),
         }
     }
-    (other, ra_salsa)
+    (other, salsa)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,4 +1,4 @@
-use db_ext_macro::query_group;
+use query_group::query_group;
 
 mod logger_db;
 use expect_test::expect;
@@ -6,7 +6,7 @@ use logger_db::LoggerDb;
 
 #[query_group]
 pub trait HelloWorldDatabase: salsa::Database {
-    #[db_ext_macro::input]
+    #[salsa::input]
     fn input_string(&self) -> String;
 
     fn length_query(&self, key: ()) -> (usize, usize);

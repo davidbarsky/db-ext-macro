@@ -1,8 +1,8 @@
-use db_ext_macro::query_group;
 use expect_test::expect;
 
 mod logger_db;
 use logger_db::LoggerDb;
+use query_group::query_group;
 
 #[salsa::input]
 struct Input {
@@ -14,11 +14,11 @@ trait PartialMigrationDatabase: salsa::Database {
     fn length_query(&self, input: Input) -> usize;
 
     // renamed/invoke query
-    #[db_ext_macro::invoke(invoke_length_query_actual)]
+    #[salsa::invoke(invoke_length_query_actual)]
     fn invoke_length_query(&self, input: Input) -> usize;
 
     // invoke tracked function
-    #[db_ext_macro::invoke(invoke_length_tracked_actual)]
+    #[salsa::invoke(invoke_length_tracked_actual)]
     fn invoke_length_tracked(&self, input: Input) -> usize;
 }
 

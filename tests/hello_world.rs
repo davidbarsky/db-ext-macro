@@ -1,4 +1,4 @@
-use db_ext_macro::query_group;
+use query_group::query_group;
 use expect_test::expect;
 
 mod logger_db;
@@ -8,7 +8,7 @@ use logger_db::LoggerDb;
 pub trait HelloWorldDatabase: salsa::Database {
     // input
     // // input with no params
-    #[db_ext_macro::input]
+    #[salsa::input]
     fn input_string(&self) -> String;
 
     // unadorned query
@@ -18,15 +18,15 @@ pub trait HelloWorldDatabase: salsa::Database {
     fn length_query_with_no_params(&self) -> usize;
 
     // renamed/invoke query
-    #[db_ext_macro::invoke(invoke_length_query_actual)]
+    #[salsa::invoke(invoke_length_query_actual)]
     fn invoke_length_query(&self, key: ()) -> usize;
 
     // not a query. should not invoked
-    #[db_ext_macro::transparent]
+    #[salsa::transparent]
     fn transparent_length(&self, key: ()) -> usize;
 
-    #[db_ext_macro::transparent]
-    #[db_ext_macro::invoke(transparent_and_invoke_length_actual)]
+    #[salsa::transparent]
+    #[salsa::invoke(transparent_and_invoke_length_actual)]
     fn transparent_and_invoke_length(&self, key: ()) -> usize;
 }
 

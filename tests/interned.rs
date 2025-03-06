@@ -1,27 +1,12 @@
 use query_group::query_group;
 
 use expect_test::expect;
+use salsa::plumbing::AsId;
 
 mod logger_db;
 use logger_db::LoggerDb;
-use salsa::plumbing::{AsId, FromId};
 
-#[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub struct InternedStringId(salsa::Id);
-
-impl AsId for InternedStringId {
-    fn as_id(&self) -> salsa::Id {
-        self.0
-    }
-}
-
-impl FromId for InternedStringId {
-    fn from_id(id: salsa::Id) -> Self {
-        InternedStringId(id)
-    }
-}
-
-#[salsa::interned_sans_lifetime(id = InternedStringId)]
+#[salsa::interned(no_lifetime)]
 pub struct InternedString {
     data: String,
 }
@@ -29,12 +14,13 @@ pub struct InternedString {
 #[query_group]
 pub trait InternedDB: salsa::Database {
     #[salsa::interned]
-    fn intern_string(&self, data: String) -> InternedStringId;
+    fn intern_string(&self, data: String) -> InternedString;
 
-    fn interned_len(&self, id: InternedStringId) -> usize;
+    fn interned_len(&self, id: InternedString) -> usize;
 }
 
-fn interned_len(db: &dyn InternedDB, id: InternedStringId) -> usize {
+fn interned_len(db: &dyn InternedDB, id: InternedString
+) -> usize {
     db.lookup_intern_string(id).len()
 }
 

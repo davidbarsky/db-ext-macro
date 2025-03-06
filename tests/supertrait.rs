@@ -12,7 +12,8 @@ pub trait RootDb: SourceDb {
 }
 
 fn parse(db: &dyn RootDb, id: usize) -> String {
+    // this is the test: does the following compile?
     db.file_text(id);
 
-    todo!()
+    String::new()
 }

@@ -4,9 +4,6 @@ use query_group::query_group;
 use expect_test::expect;
 use salsa::Setter;
 
-mod logger_db;
-use logger_db::LoggerDb;
-
 /// The queries A, B, and C in `Database` can be configured
 /// to invoke one another in arbitrary ways using this
 /// enum.
@@ -129,27 +126,23 @@ fn cycle_c(db: &dyn CycleDatabase, abc: ABC) -> Result<(), Error> {
 
 #[test]
 fn cycle_memoized() {
-    let db = LoggerDb::default();
+    let db = salsa::DatabaseImpl::new();
 
     let input = MyInput::new(&db);
     let cycle = extract_cycle(|| memoized_a(&db, input));
     let expected = expect![[r#"
         [
-            DependencyIndex(
+            DatabaseKeyIndex(
                 IngredientIndex(
                     1,
                 ),
-                Some(
-                    Id(0),
-                ),
+                Id(0),
             ),
-            DependencyIndex(
+            DatabaseKeyIndex(
                 IngredientIndex(
                     2,
                 ),
-                Some(
-                    Id(0),
-                ),
+                Id(0),
             ),
         ]
     "#]];
@@ -161,7 +154,7 @@ fn inner_cycle() {
     //     A --> B <-- C
     //     ^     |
     //     +-----+
-    let db = LoggerDb::default();
+    let db = salsa::DatabaseImpl::new();
 
     let abc = ABC::new(&db, CycleQuery::B, CycleQuery::A, CycleQuery::B);
     let err = db.cycle_c(abc);
@@ -180,7 +173,7 @@ fn cycle_revalidate() {
     //     A --> B
     //     ^     |
     //     +-----+
-    let mut db = LoggerDb::default();
+    let mut db = salsa::DatabaseImpl::new();
     let abc = ABC::new(&db, CycleQuery::B, CycleQuery::A, CycleQuery::None);
     assert!(db.cycle_a(abc).is_err());
     abc.set_b(&mut db).to(CycleQuery::A); // same value as default
@@ -232,7 +225,7 @@ fn cycle_disappears() {
 #[test]
 fn cycle_multiple() {
     // No matter whether we start from A or B, we get the same set of participants:
-    let db = LoggerDb::default();
+    let db = salsa::DatabaseImpl::new();
 
     // Configuration:
     //
@@ -274,7 +267,7 @@ fn cycle_multiple() {
 
 #[test]
 fn cycle_mixed_1() {
-    let db = LoggerDb::default();
+    let db = salsa::DatabaseImpl::new();
     //     A --> B <-- C
     //           |     ^
     //           +-----+
